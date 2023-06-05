@@ -7,7 +7,7 @@ use triomphe::Arc;
 use crate::{
     body::Body,
     db::DefDatabase,
-    hir::{Binding, BindingId, Expr, ExprId, LabelId, Pat, PatId, Statement},
+    hir::{Binding, BindingId, Expr, ExprId, LabelId, Pat, PatId, PatRange, Statement, StmtRange},
     BlockId, DefWithBodyId,
 };
 
@@ -97,7 +97,7 @@ impl ExprScopes {
             scope_by_expr: FxHashMap::default(),
         };
         let mut root = scopes.root_scope();
-        scopes.add_params_bindings(body, root, &body.params);
+        scopes.add_params_bindings(body, root, body.params);
         compute_expr_scopes(body.body_expr, body, &mut scopes, &mut root);
         scopes
     }
@@ -159,8 +159,8 @@ impl ExprScopes {
         pattern.walk_child_pats(|pat| self.add_pat_bindings(body, scope, pat));
     }
 
-    fn add_params_bindings(&mut self, body: &Body, scope: ScopeId, params: &[PatId]) {
-        params.iter().for_each(|pat| self.add_pat_bindings(body, scope, *pat));
+    fn add_params_bindings(&mut self, body: &Body, scope: ScopeId, params: PatRange) {
+        params.iter().for_each(|pat| self.add_pat_bindings(body, scope, pat));
     }
 
     fn set_scope(&mut self, node: ExprId, scope: ScopeId) {
@@ -176,13 +176,13 @@ impl ExprScopes {
 }
 
 fn compute_block_scopes(
-    statements: &[Statement],
+    statements: StmtRange,
     tail: Option<ExprId>,
     body: &Body,
     scopes: &mut ExprScopes,
     scope: &mut ScopeId,
 ) {
-    for stmt in statements {
+    for stmt in &body[statements] {
         match stmt {
             Statement::Let { pat, initializer, else_branch, .. } => {
                 if let Some(expr) = initializer {
@@ -216,7 +216,7 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
             // Overwrite the old scope for the block expr, so that every block scope can be found
             // via the block itself (important for blocks that only contain items, no expressions).
             scopes.set_scope(expr, scope);
-            compute_block_scopes(statements, *tail, body, scopes, &mut scope);
+            compute_block_scopes(*statements, *tail, body, scopes, &mut scope);
         }
         Expr::Const(_) => {
             // FIXME: This is broken.
@@ -226,7 +226,7 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
             // Overwrite the old scope for the block expr, so that every block scope can be found
             // via the block itself (important for blocks that only contain items, no expressions).
             scopes.set_scope(expr, scope);
-            compute_block_scopes(statements, *tail, body, scopes, &mut scope);
+            compute_block_scopes(*statements, *tail, body, scopes, &mut scope);
         }
         Expr::While { condition, body: body_expr, label } => {
             let mut scope = scopes.new_labeled_scope(*scope, make_label(label));
@@ -239,7 +239,7 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
         }
         Expr::Closure { args, body: body_expr, .. } => {
             let mut scope = scopes.new_scope(*scope);
-            scopes.add_params_bindings(body, scope, args);
+            scopes.add_params_bindings(body, scope, *args);
             compute_expr_scopes(*body_expr, body, scopes, &mut scope);
         }
         Expr::Match { expr, arms } => {
@@ -267,7 +267,7 @@ fn compute_expr_scopes(expr: ExprId, body: &Body, scopes: &mut ExprScopes, scope
             *scope = scopes.new_scope(*scope);
             scopes.add_pat_bindings(body, *scope, pat);
         }
-        e => e.walk_child_exprs(|e| compute_expr_scopes(e, body, scopes, scope)),
+        e => e.walk_child_exprs(body, |e| compute_expr_scopes(e, body, scopes, scope)),
     };
 }
 

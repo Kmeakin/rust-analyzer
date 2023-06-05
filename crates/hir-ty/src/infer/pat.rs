@@ -5,7 +5,10 @@ use std::iter::repeat_with;
 use chalk_ir::Mutability;
 use hir_def::{
     body::Body,
-    hir::{Binding, BindingAnnotation, BindingId, Expr, ExprId, ExprOrPatId, Literal, Pat, PatId},
+    hir::{
+        Binding, BindingAnnotation, BindingId, Expr, ExprId, ExprOrPatId, Literal, Pat, PatId,
+        PatRange,
+    },
     path::Path,
 };
 use hir_expand::name::Name;
@@ -218,12 +221,15 @@ impl<'a> InferenceContext<'a> {
         let expected = expected;
 
         let ty = match &self.body[pat] {
-            Pat::Tuple { args, ellipsis } => {
-                self.infer_tuple_pat_like(&expected, default_bm, *ellipsis, args)
-            }
+            Pat::Tuple { args, ellipsis } => self.infer_tuple_pat_like(
+                &expected,
+                default_bm,
+                *ellipsis,
+                &args.iter().collect::<Vec<_>>(),
+            ),
             Pat::Or(pats) => {
-                for pat in pats.iter() {
-                    self.infer_pat(*pat, &expected, default_bm);
+                for pat in pats.into_iter() {
+                    self.infer_pat(pat, &expected, default_bm);
                 }
                 expected.clone()
             }
@@ -240,7 +246,7 @@ impl<'a> InferenceContext<'a> {
                     default_bm,
                     pat,
                     *ellipsis,
-                    subpats,
+                    &subpats.iter().collect::<Vec<_>>(),
                 ),
             Pat::Record { path: p, args: fields, ellipsis: _ } => {
                 let subs = fields.iter().map(|f| (f.name.clone(), f.pat));
@@ -254,7 +260,7 @@ impl<'a> InferenceContext<'a> {
                 return self.infer_bind_pat(pat, *id, default_bm, *subpat, &expected);
             }
             Pat::Slice { prefix, slice, suffix } => {
-                self.infer_slice_pat(&expected, prefix, slice, suffix, default_bm)
+                self.infer_slice_pat(&expected, *prefix, slice, *suffix, default_bm)
             }
             Pat::Wild => expected.clone(),
             Pat::Range { .. } => {
@@ -371,9 +377,9 @@ impl<'a> InferenceContext<'a> {
     fn infer_slice_pat(
         &mut self,
         expected: &Ty,
-        prefix: &[PatId],
+        prefix: PatRange,
         slice: &Option<PatId>,
-        suffix: &[PatId],
+        suffix: PatRange,
         default_bm: BindingMode,
     ) -> Ty {
         let elem_ty = match expected.kind(Interner) {
@@ -381,7 +387,7 @@ impl<'a> InferenceContext<'a> {
             _ => self.err_ty(),
         };
 
-        for &pat_id in prefix.iter().chain(suffix.iter()) {
+        for pat_id in prefix.into_iter().chain(suffix.into_iter()) {
             self.infer_pat(pat_id, &elem_ty, default_bm);
         }
 
@@ -433,7 +439,7 @@ fn is_non_ref_pat(body: &hir_def::body::Body, pat: PatId) -> bool {
         | Pat::Record { .. }
         | Pat::Range { .. }
         | Pat::Slice { .. } => true,
-        Pat::Or(pats) => pats.iter().all(|p| is_non_ref_pat(body, *p)),
+        Pat::Or(pats) => pats.into_iter().all(|p| is_non_ref_pat(body, p)),
         // FIXME: ConstBlock/Path/Lit might actually evaluate to ref, but inference is unimplemented.
         Pat::Path(..) => true,
         Pat::ConstBlock(..) => true,

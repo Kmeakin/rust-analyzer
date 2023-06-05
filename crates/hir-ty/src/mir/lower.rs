@@ -9,7 +9,7 @@ use hir_def::{
     data::adt::{StructKind, VariantData},
     hir::{
         ArithOp, Array, BinaryOp, BindingAnnotation, BindingId, ExprId, LabelId, Literal,
-        LiteralOrConst, MatchArm, Pat, PatId, RecordFieldPat, RecordLitField,
+        LiteralOrConst, MatchArm, Pat, PatId, RecordFieldPat, RecordLitField, StmtRange,
     },
     lang_item::{LangItem, LangItemTarget},
     path::Path,
@@ -529,19 +529,19 @@ impl<'ctx> MirLowerCtx<'ctx> {
                 Ok(self.merge_blocks(Some(then_target), else_target, expr_id.into()))
             }
             Expr::Unsafe { id: _, statements, tail } => {
-                self.lower_block_to_place(statements, current, *tail, place, expr_id.into())
+                self.lower_block_to_place(*statements, current, *tail, place, expr_id.into())
             }
             Expr::Block { id: _, statements, tail, label } => {
                 if let Some(label) = label {
                     self.lower_loop(current, place.clone(), Some(*label), expr_id.into(), |this, begin| {
-                        if let Some(current) = this.lower_block_to_place(statements, begin, *tail, place, expr_id.into())? {
+                        if let Some(current) = this.lower_block_to_place(*statements, begin, *tail, place, expr_id.into())? {
                             let end = this.current_loop_end()?;
                             this.set_goto(current, end, expr_id.into());
                         }
                         Ok(())
                     })
                 } else {
-                    self.lower_block_to_place(statements, current, *tail, place, expr_id.into())
+                    self.lower_block_to_place(*statements, current, *tail, place, expr_id.into())
                 }
             }
             Expr::Loop { body, label } => self.lower_loop(current, place, *label, expr_id.into(), |this, begin| {
@@ -1528,14 +1528,14 @@ impl<'ctx> MirLowerCtx<'ctx> {
 
     fn lower_block_to_place(
         &mut self,
-        statements: &[hir_def::hir::Statement],
+        statements: StmtRange,
         mut current: BasicBlockId,
         tail: Option<ExprId>,
         place: Place,
         span: MirSpan,
     ) -> Result<Option<Idx<BasicBlock>>> {
         let scope = self.push_drop_scope();
-        for statement in statements.iter() {
+        for statement in &self.body[statements] {
             match statement {
                 hir_def::hir::Statement::Let { pat, initializer, else_branch, type_ref: _ } => {
                     if let Some(expr_id) = initializer {
@@ -1796,7 +1796,7 @@ pub fn mir_body_for_closure_query(
         implementation_error!("closure has not callable sig");
     };
     let current = ctx.lower_params_and_bindings(
-        args.iter().zip(sig.params().iter()).map(|(x, y)| (*x, y.clone())),
+        args.iter().zip(sig.params().iter()).map(|(x, y)| (x, y.clone())),
         |_| true,
     )?;
     if let Some(current) = ctx.lower_expr_to_place(*root, return_slot().into(), current)? {
@@ -1927,7 +1927,7 @@ pub fn lower_to_mir(
                     body.params
                         .iter()
                         .zip(callable_sig.params().iter())
-                        .map(|(x, y)| (*x, y.clone())),
+                        .map(|(x, y)| (x, y.clone())),
                     binding_picker,
                 )?;
             }

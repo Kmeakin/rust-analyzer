@@ -18,11 +18,12 @@ use std::fmt;
 
 use hir_expand::name::Name;
 use intern::Interned;
-use la_arena::{Idx, RawIdx};
+use la_arena::{Idx, IdxRange, RawIdx};
 use smallvec::SmallVec;
 use syntax::ast;
 
 use crate::{
+    body::Body,
     builtin_type::{BuiltinFloat, BuiltinInt, BuiltinUint},
     path::{GenericArgs, Path},
     type_ref::{Mutability, Rawness, TypeRef},
@@ -41,6 +42,10 @@ pub(crate) fn dummy_expr_id() -> ExprId {
 }
 
 pub type PatId = Idx<Pat>;
+pub type PatRange = IdxRange<Pat>;
+
+pub type StmtId = Idx<Statement>;
+pub type StmtRange = IdxRange<Statement>;
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum ExprOrPatId {
@@ -172,19 +177,19 @@ pub enum Expr {
     },
     Block {
         id: Option<BlockId>,
-        statements: Box<[Statement]>,
+        statements: StmtRange,
         tail: Option<ExprId>,
         label: Option<LabelId>,
     },
     Async {
         id: Option<BlockId>,
-        statements: Box<[Statement]>,
+        statements: StmtRange,
         tail: Option<ExprId>,
     },
     Const(AnonymousConstId),
     Unsafe {
         id: Option<BlockId>,
-        statements: Box<[Statement]>,
+        statements: StmtRange,
         tail: Option<ExprId>,
     },
     Loop {
@@ -272,7 +277,7 @@ pub enum Expr {
         index: ExprId,
     },
     Closure {
-        args: Box<[PatId]>,
+        args: PatRange,
         arg_types: Box<[Option<Interned<TypeRef>>]>,
         ret_type: Option<Interned<TypeRef>>,
         body: ExprId,
@@ -343,7 +348,7 @@ pub enum Statement {
 }
 
 impl Expr {
-    pub fn walk_child_exprs(&self, mut f: impl FnMut(ExprId)) {
+    pub fn walk_child_exprs(&self, body: &Body, mut f: impl FnMut(ExprId)) {
         match self {
             Expr::Missing => {}
             Expr::Path(_) => {}
@@ -361,14 +366,14 @@ impl Expr {
             Expr::Block { statements, tail, .. }
             | Expr::Unsafe { statements, tail, .. }
             | Expr::Async { statements, tail, .. } => {
-                for stmt in statements.iter() {
+                for stmt in &body[*statements] {
                     match stmt {
                         Statement::Let { initializer, else_branch, .. } => {
-                            if let &Some(expr) = initializer {
-                                f(expr);
+                            if let Some(expr) = initializer {
+                                f(*expr);
                             }
-                            if let &Some(expr) = else_branch {
-                                f(expr);
+                            if let Some(expr) = else_branch {
+                                f(*expr);
                             }
                         }
                         Statement::Expr { expr: expression, .. } => f(*expression),
@@ -531,15 +536,15 @@ pub struct RecordFieldPat {
 pub enum Pat {
     Missing,
     Wild,
-    Tuple { args: Box<[PatId]>, ellipsis: Option<u32> },
-    Or(Box<[PatId]>),
+    Tuple { args: PatRange, ellipsis: Option<u32> },
+    Or(PatRange),
     Record { path: Option<Box<Path>>, args: Box<[RecordFieldPat]>, ellipsis: bool },
     Range { start: Option<Box<LiteralOrConst>>, end: Option<Box<LiteralOrConst>> },
-    Slice { prefix: Box<[PatId]>, slice: Option<PatId>, suffix: Box<[PatId]> },
+    Slice { prefix: PatRange, slice: Option<PatId>, suffix: PatRange },
     Path(Box<Path>),
     Lit(ExprId),
     Bind { id: BindingId, subpat: Option<PatId> },
-    TupleStruct { path: Option<Box<Path>>, args: Box<[PatId]>, ellipsis: Option<u32> },
+    TupleStruct { path: Option<Box<Path>>, args: PatRange, ellipsis: Option<u32> },
     Ref { pat: PatId, mutability: Mutability },
     Box { inner: PatId },
     ConstBlock(ExprId),
@@ -558,12 +563,11 @@ impl Pat {
                 subpat.iter().copied().for_each(f);
             }
             Pat::Or(args) | Pat::Tuple { args, .. } | Pat::TupleStruct { args, .. } => {
-                args.iter().copied().for_each(f);
+                args.iter().for_each(f);
             }
             Pat::Ref { pat, .. } => f(*pat),
             Pat::Slice { prefix, slice, suffix } => {
-                let total_iter = prefix.iter().chain(slice.iter()).chain(suffix.iter());
-                total_iter.copied().for_each(f);
+                prefix.iter().chain(slice.iter().copied()).chain(suffix.iter()).for_each(f)
             }
             Pat::Record { args, .. } => {
                 args.iter().map(|f| f.pat).for_each(f);
@@ -585,7 +589,7 @@ mod size_tests {
 
     #[test]
     fn pat_size() {
-        assert_eq!(std::mem::size_of::<Pat>(), 40);
+        assert_eq!(std::mem::size_of::<Pat>(), 32);
     }
 
     #[test]

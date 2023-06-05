@@ -50,7 +50,7 @@ impl<'a> InferenceContext<'a> {
             Expr::Block { id: _, statements, tail, label: _ }
             | Expr::Async { id: _, statements, tail }
             | Expr::Unsafe { id: _, statements, tail } => {
-                for st in statements.iter() {
+                for st in &self.body[*statements] {
                     match st {
                         Statement::Let { pat, type_ref: _, initializer, else_branch } => {
                             if let Some(i) = initializer {

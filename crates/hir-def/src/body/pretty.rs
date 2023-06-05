@@ -8,7 +8,7 @@ use syntax::ast::HasName;
 use crate::{
     hir::{
         Array, BindingAnnotation, BindingId, CaptureBy, ClosureKind, Literal, LiteralOrConst,
-        Movability, Statement,
+        Movability, Statement, StmtId, StmtRange,
     },
     pretty::{print_generic_args, print_path, print_type_ref},
     type_ref::TypeRef,
@@ -54,7 +54,7 @@ pub(super) fn print_body_hir(db: &dyn DefDatabase, body: &Body, owner: DefWithBo
         Printer { db: db.upcast(), body, buf: header, indent_level: 0, needs_indent: false };
     if let DefWithBodyId::FunctionId(it) = owner {
         p.buf.push('(');
-        body.params.iter().zip(&db.function_data(it).params).for_each(|(&param, ty)| {
+        body.params.iter().zip(&db.function_data(it).params).for_each(|(param, ty)| {
             p.print_pat(param);
             p.buf.push(':');
             p.print_type_ref(ty);
@@ -394,7 +394,7 @@ impl<'a> Printer<'a> {
                     if i != 0 {
                         w!(self, ", ");
                     }
-                    self.print_pat(*pat);
+                    self.print_pat(pat);
                     if let Some(ty) = ty {
                         w!(self, ": ");
                         self.print_type_ref(ty);
@@ -439,13 +439,13 @@ impl<'a> Printer<'a> {
             Expr::Literal(lit) => self.print_literal(lit),
             Expr::Block { id: _, statements, tail, label } => {
                 let label = label.map(|lbl| format!("{}: ", self.body[lbl].name.display(self.db)));
-                self.print_block(label.as_deref(), statements, tail);
+                self.print_block(label.as_deref(), *statements, tail);
             }
             Expr::Unsafe { id: _, statements, tail } => {
-                self.print_block(Some("unsafe "), statements, tail);
+                self.print_block(Some("unsafe "), *statements, tail);
             }
             Expr::Async { id: _, statements, tail } => {
-                self.print_block(Some("async "), statements, tail);
+                self.print_block(Some("async "), *statements, tail);
             }
             Expr::Const(id) => {
                 w!(self, "const {{ /* {id:?} */ }}");
@@ -456,7 +456,7 @@ impl<'a> Printer<'a> {
     fn print_block(
         &mut self,
         label: Option<&str>,
-        statements: &[Statement],
+        statements: StmtRange,
         tail: &Option<la_arena::Idx<Expr>>,
     ) {
         self.whitespace();
@@ -493,7 +493,7 @@ impl<'a> Printer<'a> {
                     if *ellipsis == Some(i as u32) {
                         w!(self, ".., ");
                     }
-                    self.print_pat(*pat);
+                    self.print_pat(pat);
                 }
                 w!(self, ")");
             }
@@ -502,7 +502,7 @@ impl<'a> Printer<'a> {
                     if i != 0 {
                         w!(self, " | ");
                     }
-                    self.print_pat(*pat);
+                    self.print_pat(pat);
                 }
             }
             Pat::Record { path, args, ellipsis } => {
@@ -536,7 +536,7 @@ impl<'a> Printer<'a> {
             Pat::Slice { prefix, slice, suffix } => {
                 w!(self, "[");
                 for pat in prefix.iter() {
-                    self.print_pat(*pat);
+                    self.print_pat(pat);
                     w!(self, ", ");
                 }
                 if let Some(pat) = slice {
@@ -544,7 +544,7 @@ impl<'a> Printer<'a> {
                     w!(self, ", ");
                 }
                 for pat in suffix.iter() {
-                    self.print_pat(*pat);
+                    self.print_pat(pat);
                     w!(self, ", ");
                 }
                 w!(self, "]");
@@ -571,7 +571,7 @@ impl<'a> Printer<'a> {
                     if *ellipsis == Some(i as u32) {
                         w!(self, ", ..");
                     }
-                    self.print_pat(*arg);
+                    self.print_pat(arg);
                 }
                 w!(self, ")");
             }
@@ -593,7 +593,9 @@ impl<'a> Printer<'a> {
         }
     }
 
-    fn print_stmt(&mut self, stmt: &Statement) {
+    fn print_stmt(&mut self, stmt: StmtId) {
+        let stmt = &self.body[stmt];
+
         match stmt {
             Statement::Let { pat, type_ref, initializer, else_branch } => {
                 w!(self, "let ");

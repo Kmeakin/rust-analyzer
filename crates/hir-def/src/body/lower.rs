@@ -32,7 +32,7 @@ use crate::{
     hir::{
         dummy_expr_id, Array, Binding, BindingAnnotation, BindingId, BindingProblems, CaptureBy,
         ClosureKind, Expr, ExprId, Label, LabelId, Literal, LiteralOrConst, MatchArm, Movability,
-        Pat, PatId, RecordFieldPat, RecordLitField, Statement,
+        Pat, PatId, PatRange, RecordFieldPat, RecordLitField, Statement, StmtRange,
     },
     item_scope::BuiltinShadowMode,
     lang_item::LangItem,
@@ -62,9 +62,10 @@ pub(super) fn lower(
         body: Body {
             exprs: Arena::default(),
             pats: Arena::default(),
+            stmts: Arena::default(),
             bindings: Arena::default(),
             labels: Arena::default(),
-            params: Vec::new(),
+            params: PatRange::empty(),
             body_expr: dummy_expr_id(),
             block_scopes: Vec::new(),
             _c: Count::new(),
@@ -184,6 +185,7 @@ impl ExprCollector<'_> {
         is_async_fn: bool,
     ) -> (Body, BodySourceMap) {
         if let Some((param_list, mut attr_enabled)) = param_list {
+            let mut params = Vec::new();
             if let Some(self_param) =
                 param_list.self_param().filter(|_| attr_enabled.next().unwrap_or(false))
             {
@@ -195,17 +197,20 @@ impl ExprCollector<'_> {
                         false,
                     ),
                 );
-                let param_pat =
-                    self.alloc_pat(Pat::Bind { id: binding_id, subpat: None }, Either::Right(ptr));
-                self.add_definition_to_binding(binding_id, param_pat);
-                self.body.params.push(param_pat);
+                let param_pat = (
+                    Pat::Bind { id: binding_id, subpat: None },
+                    PatOrigin::User(self.expander.to_source(Either::Right(ptr))),
+                    Some(binding_id),
+                );
+                params.push(param_pat);
             }
 
             for (param, _) in param_list.params().zip(attr_enabled).filter(|(_, enabled)| *enabled)
             {
-                let param_pat = self.collect_pat_top(param.pat());
-                self.body.params.push(param_pat);
+                let param_pat = self.lower_pat_top(param.pat());
+                params.push(param_pat);
             }
+            self.body.params = self.alloc_pats(params);
         };
         self.body.body_expr = self.with_label_rib(RibKind::Closure, |this| {
             if is_async_fn {
@@ -214,7 +219,7 @@ impl ExprCollector<'_> {
                         let expr = this.collect_expr(e);
                         this.alloc_expr_desugared(Expr::Async {
                             id: None,
-                            statements: Box::new([]),
+                            statements: StmtRange::empty(),
                             tail: Some(expr),
                         })
                     }
@@ -509,7 +514,7 @@ impl ExprCollector<'_> {
                 let mut arg_types = Vec::new();
                 if let Some(pl) = e.param_list() {
                     for param in pl.params() {
-                        let pat = this.collect_pat_top(param.pat());
+                        let pat = this.lower_pat_top(param.pat());
                         let type_ref =
                             param.ty().map(|it| Interned::new(TypeRef::from_ast(&this.ctx(), it)));
                         args.push(pat);
@@ -544,7 +549,7 @@ impl ExprCollector<'_> {
                 this.current_binding_owner = prev_binding_owner;
                 this.current_try_block_label = prev_try_block_label;
                 this.body.exprs[result_expr_id] = Expr::Closure {
-                    args: args.into(),
+                    args: this.alloc_pats(args),
                     arg_types: arg_types.into(),
                     ret_type,
                     body,
@@ -772,7 +777,7 @@ impl ExprCollector<'_> {
         };
         let some_pat = Pat::TupleStruct {
             path: Some(Box::new(option_some)),
-            args: Box::new([self.collect_pat_top(e.pat())]),
+            args: PatRange::singleton(self.collect_pat_top(e.pat())),
             ellipsis: None,
         };
         let label = e.label().map(|label| self.collect_label(label));
@@ -851,13 +856,15 @@ impl ExprCollector<'_> {
         let continue_name = Name::generate_new_name();
         let continue_binding =
             self.alloc_binding(continue_name.clone(), BindingAnnotation::Unannotated);
-        let continue_bpat =
-            self.alloc_pat_desugared(Pat::Bind { id: continue_binding, subpat: None });
-        self.add_definition_to_binding(continue_binding, continue_bpat);
+        let continue_bpat = self.alloc_pat(
+            Pat::Bind { id: continue_binding, subpat: None },
+            PatOrigin::None,
+            Some(continue_binding),
+        );
         let continue_arm = MatchArm {
             pat: self.alloc_pat_desugared(Pat::TupleStruct {
                 path: Some(Box::new(cf_continue)),
-                args: Box::new([continue_bpat]),
+                args: PatRange::singleton(continue_bpat),
                 ellipsis: None,
             }),
             guard: None,
@@ -865,12 +872,15 @@ impl ExprCollector<'_> {
         };
         let break_name = Name::generate_new_name();
         let break_binding = self.alloc_binding(break_name.clone(), BindingAnnotation::Unannotated);
-        let break_bpat = self.alloc_pat_desugared(Pat::Bind { id: break_binding, subpat: None });
-        self.add_definition_to_binding(break_binding, break_bpat);
+        let break_bpat = self.alloc_pat(
+            Pat::Bind { id: break_binding, subpat: None },
+            PatOrigin::None,
+            Some(break_binding),
+        );
         let break_arm = MatchArm {
             pat: self.alloc_pat_desugared(Pat::TupleStruct {
                 path: Some(Box::new(cf_break)),
-                args: Box::new([break_bpat]),
+                args: PatRange::singleton(break_bpat),
                 ellipsis: None,
             }),
             guard: None,
@@ -1072,7 +1082,7 @@ impl ExprCollector<'_> {
     fn collect_block_(
         &mut self,
         block: ast::BlockExpr,
-        mk_block: impl FnOnce(Option<BlockId>, Box<[Statement]>, Option<ExprId>) -> Expr,
+        mk_block: impl FnOnce(Option<BlockId>, StmtRange, Option<ExprId>) -> Expr,
     ) -> ExprId {
         let block_has_items = {
             let statement_has_item = block.statements().any(|stmt| match stmt {
@@ -1119,9 +1129,9 @@ impl ExprCollector<'_> {
             None
         });
 
+        let statements = self.body.stmts.alloc_many(statements);
         let syntax_node_ptr = AstPtr::new(&block.into());
-        let expr_id = self
-            .alloc_expr(mk_block(block_id, statements.into_boxed_slice(), tail), syntax_node_ptr);
+        let expr_id = self.alloc_expr(mk_block(block_id, statements, tail), syntax_node_ptr);
 
         self.def_map = prev_def_map;
         self.expander.module = prev_local_module;
@@ -1149,67 +1159,24 @@ impl ExprCollector<'_> {
     // region: patterns
 
     fn collect_pat_top(&mut self, pat: Option<ast::Pat>) -> PatId {
+        let (pat, origin, binding_id) = self.lower_pat_top(pat);
+        self.alloc_pat(pat, origin, binding_id)
+    }
+
+    fn lower_pat_top(&mut self, pat: Option<ast::Pat>) -> (Pat, PatOrigin, Option<BindingId>) {
         match pat {
-            Some(pat) => self.collect_pat(pat, &mut BindingList::default()),
-            None => self.missing_pat(),
+            Some(pat) => self.lower_pat(pat, &mut BindingList::default()),
+            None => (Pat::Missing, PatOrigin::None, None),
         }
     }
 
-    fn collect_pat(&mut self, pat: ast::Pat, binding_list: &mut BindingList) -> PatId {
+    fn lower_pat(
+        &mut self,
+        pat: ast::Pat,
+        binding_list: &mut BindingList,
+    ) -> (Pat, PatOrigin, Option<BindingId>) {
         let pattern = match &pat {
-            ast::Pat::IdentPat(bp) => {
-                let name = bp.name().map(|nr| nr.as_name()).unwrap_or_else(Name::missing);
-
-                let annotation =
-                    BindingAnnotation::new(bp.mut_token().is_some(), bp.ref_token().is_some());
-                let subpat = bp.pat().map(|subpat| self.collect_pat(subpat, binding_list));
-
-                let is_simple_ident_pat =
-                    annotation == BindingAnnotation::Unannotated && subpat.is_none();
-                let (binding, pattern) = if is_simple_ident_pat {
-                    // This could also be a single-segment path pattern. To
-                    // decide that, we need to try resolving the name.
-                    let (resolved, _) = self.def_map.resolve_path(
-                        self.db,
-                        self.expander.module.local_id,
-                        &name.clone().into(),
-                        BuiltinShadowMode::Other,
-                        None,
-                    );
-                    match resolved.take_values() {
-                        Some(ModuleDefId::ConstId(_)) => (None, Pat::Path(name.into())),
-                        Some(ModuleDefId::EnumVariantId(_)) => {
-                            // this is only really valid for unit variants, but
-                            // shadowing other enum variants with a pattern is
-                            // an error anyway
-                            (None, Pat::Path(name.into()))
-                        }
-                        Some(ModuleDefId::AdtId(AdtId::StructId(s)))
-                            if self.db.struct_data(s).variant_data.kind() != StructKind::Record =>
-                        {
-                            // Funnily enough, record structs *can* be shadowed
-                            // by pattern bindings (but unit or tuple structs
-                            // can't).
-                            (None, Pat::Path(name.into()))
-                        }
-                        // shadowing statics is an error as well, so we just ignore that case here
-                        _ => {
-                            let id = binding_list.find(self, name, annotation);
-                            (Some(id), Pat::Bind { id, subpat })
-                        }
-                    }
-                } else {
-                    let id = binding_list.find(self, name, annotation);
-                    (Some(id), Pat::Bind { id, subpat })
-                };
-
-                let ptr = AstPtr::new(&pat);
-                let pat = self.alloc_pat(pattern, Either::Left(ptr));
-                if let Some(binding_id) = binding {
-                    self.add_definition_to_binding(binding_id, pat);
-                }
-                return pat;
-            }
+            ast::Pat::IdentPat(bp) => return self.lower_ident_pat(&pat, bp, binding_list),
             ast::Pat::TupleStructPat(p) => {
                 let path =
                     p.path().and_then(|path| self.expander.parse_path(self.db, path)).map(Box::new);
@@ -1236,15 +1203,15 @@ impl ExprCollector<'_> {
                 let mut pats = Vec::with_capacity(p.pats().count());
                 let mut it = p.pats();
                 let Some(first) = it.next() else {
-                    break 'b Pat::Or(Box::new([]));
+                    break 'b Pat::Or(PatRange::empty());
                 };
-                pats.push(self.collect_pat(first, binding_list));
+                pats.push(self.lower_pat(first, binding_list));
                 binding_list.reject_new = true;
                 for rest in it {
                     for (_, x) in binding_list.is_used.iter_mut() {
                         *x = false;
                     }
-                    pats.push(self.collect_pat(rest, binding_list));
+                    pats.push(self.lower_pat(rest, binding_list));
                     for (&id, &x) in binding_list.is_used.iter() {
                         if !x {
                             self.body.bindings[id].problems =
@@ -1257,9 +1224,9 @@ impl ExprCollector<'_> {
                 for (id, _) in current_is_used.into_iter() {
                     binding_list.check_is_used(self, id);
                 }
-                Pat::Or(pats.into())
+                Pat::Or(self.alloc_pats(pats))
             }
-            ast::Pat::ParenPat(p) => return self.collect_pat_opt(p.pat(), binding_list),
+            ast::Pat::ParenPat(p) => return self.lower_pat_opt(p.pat(), binding_list),
             ast::Pat::TuplePat(p) => {
                 let (args, ellipsis) = self.collect_tuple_pat(
                     p.fields(),
@@ -1294,13 +1261,18 @@ impl ExprCollector<'_> {
             }
             ast::Pat::SlicePat(p) => {
                 let SlicePatComponents { prefix, slice, suffix } = p.components();
+                let mut pats = Vec::with_capacity(std::cmp::max(prefix.len(), suffix.len()));
+
+                pats.extend(prefix.into_iter().map(|p| self.lower_pat(p, binding_list)));
+                let prefix = self.alloc_pats(pats.drain(..));
+
+                let slice = slice.map(|p| self.collect_pat(p, binding_list));
+
+                pats.extend(suffix.into_iter().map(|p| self.lower_pat(p, binding_list)));
+                let suffix = self.alloc_pats(pats.drain(..));
 
                 // FIXME properly handle `RestPat`
-                Pat::Slice {
-                    prefix: prefix.into_iter().map(|p| self.collect_pat(p, binding_list)).collect(),
-                    slice: slice.map(|p| self.collect_pat(p, binding_list)),
-                    suffix: suffix.into_iter().map(|p| self.collect_pat(p, binding_list)).collect(),
-                }
+                Pat::Slice { prefix, slice, suffix }
             }
             #[rustfmt::skip] // https://github.com/rust-lang/rustfmt/issues/5676
             ast::Pat::LiteralPat(lit) => 'b: {
@@ -1341,12 +1313,11 @@ impl ExprCollector<'_> {
                 Some(call) => {
                     let macro_ptr = AstPtr::new(&call);
                     let src = self.expander.to_source(Either::Left(AstPtr::new(&pat)));
-                    let pat =
+                    let (pat, parent, binding_id) =
                         self.collect_macro_call(call, macro_ptr, true, |this, expanded_pat| {
-                            this.collect_pat_opt(expanded_pat, binding_list)
+                            this.lower_pat_opt(expanded_pat, binding_list)
                         });
-                    self.source_map.pat_map.insert(src, pat);
-                    return pat;
+                    return (pat, PatOrigin::Macro(src, Box::new(parent)), binding_id);
                 }
                 None => Pat::Missing,
             },
@@ -1376,14 +1347,81 @@ impl ExprCollector<'_> {
             }
         };
         let ptr = AstPtr::new(&pat);
-        self.alloc_pat(pattern, Either::Left(ptr))
+        (pattern, PatOrigin::User(self.expander.to_source(Either::Left(ptr))), None)
+    }
+
+    fn collect_pat(&mut self, pat: ast::Pat, binding_list: &mut BindingList) -> PatId {
+        let (pattern, ptr, binding_id) = self.lower_pat(pat, binding_list);
+        self.alloc_pat(pattern, ptr, binding_id)
     }
 
     fn collect_pat_opt(&mut self, pat: Option<ast::Pat>, binding_list: &mut BindingList) -> PatId {
+        let (pat, origin, binding_id) = self.lower_pat_opt(pat, binding_list);
+        self.alloc_pat(pat, origin, binding_id)
+    }
+
+    fn lower_pat_opt(
+        &mut self,
+        pat: Option<ast::Pat>,
+        binding_list: &mut BindingList,
+    ) -> (Pat, PatOrigin, Option<BindingId>) {
         match pat {
-            Some(pat) => self.collect_pat(pat, binding_list),
-            None => self.missing_pat(),
+            Some(pat) => self.lower_pat(pat, binding_list),
+            None => Self::missing_pat(),
         }
+    }
+
+    fn lower_ident_pat(
+        &mut self,
+        pat: &ast::Pat,
+        bp: &ast::IdentPat,
+        binding_list: &mut BindingList,
+    ) -> (Pat, PatOrigin, Option<BindingId>) {
+        let name = bp.name().map(|nr| nr.as_name()).unwrap_or_else(Name::missing);
+
+        let annotation = BindingAnnotation::new(bp.mut_token().is_some(), bp.ref_token().is_some());
+        let subpat = bp.pat().map(|subpat| self.collect_pat(subpat, binding_list));
+
+        let is_simple_ident_pat = annotation == BindingAnnotation::Unannotated && subpat.is_none();
+        let (binding, pattern) = if is_simple_ident_pat {
+            // This could also be a single-segment path pattern. To
+            // decide that, we need to try resolving the name.
+            let (resolved, _) = self.def_map.resolve_path(
+                self.db,
+                self.expander.module.local_id,
+                &name.clone().into(),
+                BuiltinShadowMode::Other,
+                None,
+            );
+            match resolved.take_values() {
+                Some(ModuleDefId::ConstId(_)) => (None, Pat::Path(name.into())),
+                Some(ModuleDefId::EnumVariantId(_)) => {
+                    // this is only really valid for unit variants, but
+                    // shadowing other enum variants with a pattern is
+                    // an error anyway
+                    (None, Pat::Path(name.into()))
+                }
+                Some(ModuleDefId::AdtId(AdtId::StructId(s)))
+                    if self.db.struct_data(s).variant_data.kind() != StructKind::Record =>
+                {
+                    // Funnily enough, record structs *can* be shadowed
+                    // by pattern bindings (but unit or tuple structs
+                    // can't).
+                    (None, Pat::Path(name.into()))
+                }
+                // shadowing statics is an error as well, so we just ignore that case here
+                _ => {
+                    let id = binding_list.find(self, name, annotation);
+                    (Some(id), Pat::Bind { id, subpat })
+                }
+            }
+        } else {
+            let id = binding_list.find(self, name, annotation);
+            (Some(id), Pat::Bind { id, subpat })
+        };
+
+        let ptr = AstPtr::new(pat);
+        (pattern, PatOrigin::User(self.expander.to_source(Either::Left(ptr))), binding)
     }
 
     fn collect_tuple_pat(
@@ -1391,23 +1429,22 @@ impl ExprCollector<'_> {
         args: AstChildren<ast::Pat>,
         has_leading_comma: bool,
         binding_list: &mut BindingList,
-    ) -> (Box<[PatId]>, Option<u32>) {
+    ) -> (PatRange, Option<u32>) {
         // Find the location of the `..`, if there is one. Note that we do not
         // consider the possibility of there being multiple `..` here.
         let ellipsis =
             args.clone().position(|p| matches!(p, ast::Pat::RestPat(_))).map(|p| p as u32);
         // We want to skip the `..` pattern here, since we account for it above.
-        let mut args: Vec<_> = args
+        let args = args
             .filter(|p| !matches!(p, ast::Pat::RestPat(_)))
-            .map(|p| self.collect_pat(p, binding_list))
-            .collect();
+            .map(|p| self.lower_pat(p, binding_list));
         // if there is a leading comma, the user is most likely to type out a leading pattern
         // so we insert a missing pattern at the beginning for IDE features
-        if has_leading_comma {
-            args.insert(0, self.missing_pat());
-        }
+        let first =
+            if has_leading_comma { Some((Pat::Missing, PatOrigin::None, None)) } else { None };
 
-        (args.into_boxed_slice(), ellipsis)
+        let args: Vec<_> = first.into_iter().chain(args).collect();
+        (self.alloc_pats(args), ellipsis)
     }
 
     // endregion: patterns
@@ -1434,10 +1471,6 @@ impl ExprCollector<'_> {
             }
             None => Some(()),
         }
-    }
-
-    fn add_definition_to_binding(&mut self, binding_id: BindingId, pat_id: PatId) {
-        self.body.bindings[binding_id].definitions.push(pat_id);
     }
 
     // region: labels
@@ -1551,19 +1584,53 @@ impl ExprCollector<'_> {
         })
     }
 
-    fn alloc_pat(&mut self, pat: Pat, ptr: PatPtr) -> PatId {
-        let src = self.expander.to_source(ptr);
-        let id = self.body.pats.alloc(pat);
-        self.source_map.pat_map_back.insert(id, src.clone());
-        self.source_map.pat_map.insert(src, id);
-        id
+    fn alloc_pat(
+        &mut self,
+        pat: Pat,
+        mut origin: PatOrigin,
+        binding_id: Option<BindingId>,
+    ) -> PatId {
+        let pat_id = self.body.pats.alloc(pat);
+        loop {
+            match origin {
+                PatOrigin::None => break,
+                PatOrigin::User(src) => {
+                    self.source_map.pat_map_back.insert(pat_id, src.clone());
+                    self.source_map.pat_map.insert(src, pat_id);
+                    break;
+                }
+                PatOrigin::Macro(macro_src, parent_origin) => {
+                    self.source_map.pat_map.insert(macro_src, pat_id);
+                    origin = *parent_origin;
+                }
+            }
+        }
+
+        if let Some(binding_id) = binding_id {
+            self.body.bindings[binding_id].definitions.push(pat_id);
+        }
+        pat_id
     }
+
     // FIXME: desugared pats don't have ptr, that's wrong and should be fixed somehow.
     fn alloc_pat_desugared(&mut self, pat: Pat) -> PatId {
-        self.body.pats.alloc(pat)
+        self.alloc_pat(pat, PatOrigin::None, None)
     }
-    fn missing_pat(&mut self) -> PatId {
-        self.body.pats.alloc(Pat::Missing)
+
+    fn missing_pat() -> (Pat, PatOrigin, Option<BindingId>) {
+        (Pat::Missing, PatOrigin::None, None)
+    }
+
+    fn alloc_pats(
+        &mut self,
+        pats: impl IntoIterator<Item = (Pat, PatOrigin, Option<BindingId>)>,
+    ) -> PatRange {
+        let start = self.body.pats.next_idx();
+        for (pat, origin, binding_id) in pats {
+            self.alloc_pat(pat, origin, binding_id);
+        }
+        let end = self.body.pats.next_idx();
+        PatRange::new(start..end)
     }
 
     fn alloc_label(&mut self, label: Label, ptr: LabelPtr) -> LabelId {
@@ -1577,6 +1644,13 @@ impl ExprCollector<'_> {
     fn alloc_label_desugared(&mut self, label: Label) -> LabelId {
         self.body.labels.alloc(label)
     }
+}
+
+#[derive(Debug, Clone)]
+enum PatOrigin {
+    None,
+    User(InFile<PatPtr>),
+    Macro(InFile<PatPtr>, Box<Self>), // FIXME: use Vec/SmallVec instead of linked list
 }
 
 fn comma_follows_token(t: Option<syntax::SyntaxToken>) -> bool {

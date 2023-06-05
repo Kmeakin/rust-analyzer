@@ -12,7 +12,10 @@ pub(crate) mod usefulness;
 
 use chalk_ir::Mutability;
 use hir_def::{
-    body::Body, data::adt::VariantData, hir::PatId, AdtId, EnumVariantId, LocalFieldId, VariantId,
+    body::Body,
+    data::adt::VariantData,
+    hir::{PatId, PatRange},
+    AdtId, EnumVariantId, LocalFieldId, VariantId,
 };
 use hir_expand::name::Name;
 use stdx::{always, never};
@@ -133,7 +136,7 @@ impl<'a> PatCtxt<'a> {
                 return self.lower_path(pat, path);
             }
 
-            hir_def::hir::Pat::Tuple { ref args, ellipsis } => {
+            hir_def::hir::Pat::Tuple { args, ellipsis } => {
                 let arity = match *ty.kind(Interner) {
                     TyKind::Tuple(arity, _) => arity as u32,
                     _ => {
@@ -162,7 +165,7 @@ impl<'a> PatCtxt<'a> {
                 PatKind::Binding { name: name.clone(), subpattern: self.lower_opt_pattern(subpat) }
             }
 
-            hir_def::hir::Pat::TupleStruct { ref args, ellipsis, .. } if variant.is_some() => {
+            hir_def::hir::Pat::TupleStruct { args, ellipsis, .. } if variant.is_some() => {
                 let expected_len = variant.unwrap().variant_data(self.db.upcast()).fields().len();
                 let subpatterns = self.lower_tuple_subpats(args, expected_len as u32, ellipsis);
                 self.lower_variant_or_leaf(pat, ty, subpatterns)
@@ -193,7 +196,7 @@ impl<'a> PatCtxt<'a> {
                 PatKind::Wild
             }
 
-            hir_def::hir::Pat::Or(ref pats) => PatKind::Or { pats: self.lower_patterns(pats) },
+            hir_def::hir::Pat::Or(pats) => PatKind::Or { pats: self.lower_patterns(pats) },
 
             _ => {
                 self.errors.push(PatternError::Unimplemented);
@@ -206,7 +209,7 @@ impl<'a> PatCtxt<'a> {
 
     fn lower_tuple_subpats(
         &mut self,
-        pats: &[PatId],
+        pats: PatRange,
         expected_len: u32,
         ellipsis: Option<u32>,
     ) -> Vec<FieldPat> {
@@ -217,15 +220,15 @@ impl<'a> PatCtxt<'a> {
 
         pats.iter()
             .enumerate_and_adjust(expected_len, ellipsis)
-            .map(|(i, &subpattern)| FieldPat {
+            .map(|(i, subpattern)| FieldPat {
                 field: LocalFieldId::from_raw(i.into()),
                 pattern: self.lower_pattern(subpattern),
             })
             .collect()
     }
 
-    fn lower_patterns(&mut self, pats: &[PatId]) -> Vec<Pat> {
-        pats.iter().map(|&p| self.lower_pattern(p)).collect()
+    fn lower_patterns(&mut self, pats: impl IntoIterator<Item = PatId>) -> Vec<Pat> {
+        pats.into_iter().map(|p| self.lower_pattern(p)).collect()
     }
 
     fn lower_opt_pattern(&mut self, pat: Option<PatId>) -> Option<Pat> {

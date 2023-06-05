@@ -462,7 +462,7 @@ impl InferenceContext<'_> {
             Expr::Async { statements, tail, .. }
             | Expr::Unsafe { statements, tail, .. }
             | Expr::Block { statements, tail, .. } => {
-                for s in statements.iter() {
+                for s in &self.body[*statements] {
                     match s {
                         Statement::Let { pat, type_ref: _, initializer, else_branch } => {
                             if let Some(else_branch) = else_branch {
@@ -802,12 +802,12 @@ impl InferenceContext<'_> {
                 for (arg, i) in it {
                     let mut p = place.clone();
                     p.projections.push(ProjectionElem::TupleOrClosureField(i));
-                    self.consume_with_pat(p, *arg);
+                    self.consume_with_pat(p, arg);
                 }
             }
             Pat::Or(pats) => {
                 for pat in pats.iter() {
-                    self.consume_with_pat(place.clone(), *pat);
+                    self.consume_with_pat(place.clone(), pat);
                 }
             }
             Pat::Record { args, .. } => {
@@ -875,7 +875,7 @@ impl InferenceContext<'_> {
                                 parent: variant.into(),
                                 local_id: i,
                             }));
-                            self.consume_with_pat(p, *arg);
+                            self.consume_with_pat(p, arg);
                         }
                     }
                 }

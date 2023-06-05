@@ -2008,7 +2008,7 @@ impl Param {
     pub fn as_local(&self, db: &dyn HirDatabase) -> Option<Local> {
         let parent = DefWithBodyId::FunctionId(self.func.into());
         let body = db.body(parent);
-        let pat_id = body.params[self.idx];
+        let pat_id = body.params.iter().nth(self.idx).unwrap();
         if let Pat::Bind { id, .. } = &body[pat_id] {
             Some(Local { parent, binding_id: *id })
         } else {

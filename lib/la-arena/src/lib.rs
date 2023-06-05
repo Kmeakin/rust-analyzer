@@ -165,6 +165,16 @@ impl<T> IdxRange<T> {
         }
     }
 
+    /// Creates an empty index range
+    pub fn empty() -> Self {
+        Self { start: RawIdx::from_u32(0), end: RawIdx::from_u32(0), _p: PhantomData }
+    }
+
+    /// Creates a singleton index range
+    pub fn singleton(elem: Idx<T>) -> Self {
+        Self::new_inclusive(elem..=elem)
+    }
+
     /// Returns whether the index range is empty.
     ///
     /// ```
@@ -188,9 +198,34 @@ impl<T> IdxRange<T> {
         Idx::from_raw(self.end)
     }
 
+    /// Returns the number of elements in the index range.
+    pub fn len(&self) -> usize {
+        (self.end.into_u32() - self.start.into_u32()) as usize
+    }
+
     /// Returns an iterator over the index range.
     pub fn iter(&self) -> IdxRangeIterator<T> {
         IdxRangeIterator { range: self.start.into_u32()..self.end.into_u32(), _p: PhantomData }
+    }
+
+    /// Divides the index range into two at an index.
+    ///
+    /// The first will contain all indices from `[0, mid)` (excluding
+    /// the index `mid` itself) and the second will contain all
+    /// indices from `[mid, len)` (excluding the index `len` itself).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mid > len`.
+    pub fn split_at(&self, mid: usize) -> (Self, Self) {
+        assert!(mid <= self.len());
+
+        let mid = mid as u32;
+        let start = Idx::from_raw(self.start);
+        let mid = Idx::from_raw(RawIdx::from_u32(mid + self.start.into_u32()));
+        let end = Idx::from_raw(self.end);
+
+        (Self::new(start..mid), Self::new(mid..end))
     }
 }
 
@@ -217,6 +252,12 @@ impl<T> PartialEq for IdxRange<T> {
 }
 
 impl<T> Eq for IdxRange<T> {}
+
+impl<T> Default for IdxRange<T> {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
 
 /// An iterator over an `IdxRange`
 pub struct IdxRangeIterator<T> {
@@ -479,9 +520,7 @@ impl<T> Arena<T> {
     }
 
     /// Returns the index of the next value allocated on the arena.
-    ///
-    /// This method should remain private to make creating invalid `Idx`s harder.
-    fn next_idx(&self) -> Idx<T> {
+    pub fn next_idx(&self) -> Idx<T> {
         Idx::from_raw(RawIdx::from_u32(self.data.len() as u32))
     }
 }

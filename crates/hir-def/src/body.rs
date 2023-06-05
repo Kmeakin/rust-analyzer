@@ -22,7 +22,8 @@ use crate::{
     db::DefDatabase,
     expander::Expander,
     hir::{
-        dummy_expr_id, Binding, BindingId, Expr, ExprId, Label, LabelId, Pat, PatId, RecordFieldPat,
+        dummy_expr_id, Binding, BindingId, Expr, ExprId, Label, LabelId, Pat, PatId, PatRange,
+        RecordFieldPat, Statement, StmtId, StmtRange,
     },
     nameres::DefMap,
     path::{ModPath, Path},
@@ -35,6 +36,7 @@ use crate::{
 pub struct Body {
     pub exprs: Arena<Expr>,
     pub pats: Arena<Pat>,
+    pub stmts: Arena<Statement>,
     pub bindings: Arena<Binding>,
     pub labels: Arena<Label>,
     /// The patterns for the function's parameters. While the parameter types are
@@ -43,7 +45,7 @@ pub struct Body {
     ///
     /// If this `Body` is for the body of a constant, this will just be
     /// empty.
-    pub params: Vec<PatId>,
+    pub params: PatRange,
     /// The `ExprId` of the actual body expression.
     pub body_expr: ExprId,
     /// Block expressions in this body that may contain inner items.
@@ -209,13 +211,22 @@ impl Body {
     }
 
     fn shrink_to_fit(&mut self) {
-        let Self { _c: _, body_expr: _, block_scopes, exprs, labels, params, pats, bindings } =
-            self;
+        let Self {
+            _c: _,
+            body_expr: _,
+            block_scopes,
+            exprs,
+            labels,
+            params: _,
+            pats,
+            stmts,
+            bindings,
+        } = self;
         block_scopes.shrink_to_fit();
         exprs.shrink_to_fit();
         labels.shrink_to_fit();
-        params.shrink_to_fit();
         pats.shrink_to_fit();
+        stmts.shrink_to_fit();
         bindings.shrink_to_fit();
     }
 
@@ -242,12 +253,11 @@ impl Body {
                 }
             }
             Pat::Or(args) | Pat::Tuple { args, .. } | Pat::TupleStruct { args, .. } => {
-                args.iter().copied().for_each(|p| f(p));
+                args.iter().for_each(f)
             }
             Pat::Ref { pat, .. } => f(*pat),
             Pat::Slice { prefix, slice, suffix } => {
-                let total_iter = prefix.iter().chain(slice.iter()).chain(suffix.iter());
-                total_iter.copied().for_each(|p| f(p));
+                prefix.iter().chain(slice.iter().copied()).chain(suffix.iter()).for_each(f)
             }
             Pat::Record { args, .. } => {
                 args.iter().for_each(|RecordFieldPat { pat, .. }| f(*pat));
@@ -268,6 +278,7 @@ impl Default for Body {
             body_expr: dummy_expr_id(),
             exprs: Default::default(),
             pats: Default::default(),
+            stmts: Default::default(),
             bindings: Default::default(),
             labels: Default::default(),
             params: Default::default(),
@@ -290,6 +301,30 @@ impl Index<PatId> for Body {
 
     fn index(&self, pat: PatId) -> &Pat {
         &self.pats[pat]
+    }
+}
+
+impl Index<PatRange> for Body {
+    type Output = [Pat];
+
+    fn index(&self, pats: PatRange) -> &Self::Output {
+        &self.pats[pats]
+    }
+}
+
+impl Index<StmtId> for Body {
+    type Output = Statement;
+
+    fn index(&self, stmt: StmtId) -> &Self::Output {
+        &self.stmts[stmt]
+    }
+}
+
+impl Index<StmtRange> for Body {
+    type Output = [Statement];
+
+    fn index(&self, stmts: StmtRange) -> &Self::Output {
+        &self.stmts[stmts]
     }
 }
 

@@ -704,7 +704,7 @@ impl<'a> InferenceContext<'a> {
             let ty = self.insert_type_vars(ty);
             let ty = self.normalize_associated_types_in(ty);
 
-            self.infer_top_pat(*pat, &ty);
+            self.infer_top_pat(pat, &ty);
         }
         let return_ty = &*data.ret_type;
 

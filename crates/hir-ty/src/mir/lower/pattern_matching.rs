@@ -1,6 +1,10 @@
 //! MIR lowering for patterns
 
-use hir_def::{hir::LiteralOrConst, resolver::HasResolver, AssocItemId};
+use hir_def::{
+    hir::{LiteralOrConst, PatRange},
+    resolver::HasResolver,
+    AssocItemId,
+};
 
 use crate::BindingMode;
 
@@ -13,7 +17,7 @@ macro_rules! not_supported {
 }
 
 pub(super) enum AdtPatternShape<'a> {
-    Tuple { args: &'a [PatId], ellipsis: Option<u32> },
+    Tuple { args: PatRange, ellipsis: Option<u32> },
     Record { args: &'a [RecordFieldPat] },
     Unit,
 }
@@ -103,7 +107,7 @@ impl MirLowerCtx<'_> {
                 self.pattern_match_tuple_like(
                     current,
                     current_else,
-                    args,
+                    *args,
                     *ellipsis,
                     (0..subst.len(Interner)).map(|i| PlaceElem::TupleOrClosureField(i)),
                     &(&mut cond_place),
@@ -113,12 +117,12 @@ impl MirLowerCtx<'_> {
             Pat::Or(pats) => {
                 let then_target = self.new_basic_block();
                 let mut finished = false;
-                for pat in &**pats {
+                for pat in pats.iter() {
                     let (mut next, next_else) = self.pattern_match_inner(
                         current,
                         None,
                         (&mut cond_place).clone(),
-                        *pat,
+                        pat,
                         MatchingMode::Check,
                     )?;
                     if mode == MatchingMode::Bind {
@@ -126,7 +130,7 @@ impl MirLowerCtx<'_> {
                             next,
                             None,
                             (&mut cond_place).clone(),
-                            *pat,
+                            pat,
                             MatchingMode::Bind,
                         )?;
                     }
@@ -261,7 +265,7 @@ impl MirLowerCtx<'_> {
                         current = next;
                     }
                 }
-                for (i, &pat) in prefix.iter().enumerate() {
+                for (i, pat) in prefix.iter().enumerate() {
                     let next_place = (&mut cond_place).project(ProjectionElem::ConstantIndex {
                         offset: i as u64,
                         from_end: false,
@@ -286,7 +290,7 @@ impl MirLowerCtx<'_> {
                         }
                     }
                 }
-                for (i, &pat) in suffix.iter().enumerate() {
+                for (i, pat) in suffix.iter().enumerate() {
                     let next_place = (&mut cond_place).project(ProjectionElem::ConstantIndex {
                         offset: i as u64,
                         from_end: true,
@@ -403,7 +407,7 @@ impl MirLowerCtx<'_> {
                     current,
                     pattern.into(),
                     current_else,
-                    AdtPatternShape::Tuple { args, ellipsis: *ellipsis },
+                    AdtPatternShape::Tuple { args: *args, ellipsis: *ellipsis },
                     mode,
                 )?
             }
@@ -600,7 +604,7 @@ impl MirLowerCtx<'_> {
         &mut self,
         current: BasicBlockId,
         current_else: Option<BasicBlockId>,
-        args: &[PatId],
+        args: PatRange,
         ellipsis: Option<u32>,
         fields: impl DoubleEndedIterator<Item = PlaceElem> + Clone,
         cond_place: &Place,
@@ -611,7 +615,7 @@ impl MirLowerCtx<'_> {
             .iter()
             .zip(fields.clone())
             .chain(ar.iter().rev().zip(fields.rev()))
-            .map(|(x, y)| (y, *x));
+            .map(|(x, y)| (y, x));
         self.pattern_match_adt(current, current_else, it, cond_place, mode)
     }
 }

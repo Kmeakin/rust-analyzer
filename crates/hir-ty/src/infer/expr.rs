@@ -11,7 +11,8 @@ use chalk_ir::{
 use hir_def::{
     generics::TypeOrConstParamData,
     hir::{
-        ArithOp, Array, BinaryOp, ClosureKind, Expr, ExprId, LabelId, Literal, Statement, UnaryOp,
+        ArithOp, Array, BinaryOp, ClosureKind, Expr, ExprId, LabelId, Literal, Statement,
+        StmtRange, UnaryOp,
     },
     lang_item::{LangItem, LangItemTarget},
     path::{GenericArg, GenericArgs},
@@ -166,10 +167,10 @@ impl<'a> InferenceContext<'a> {
                 self.result.standard_types.bool_.clone()
             }
             Expr::Block { statements, tail, label, id } => {
-                self.infer_block(tgt_expr, *id, statements, *tail, *label, expected)
+                self.infer_block(tgt_expr, *id, *statements, *tail, *label, expected)
             }
             Expr::Unsafe { id, statements, tail } => {
-                self.infer_block(tgt_expr, *id, statements, *tail, None, expected)
+                self.infer_block(tgt_expr, *id, *statements, *tail, None, expected)
             }
             Expr::Const(id) => {
                 self.with_breakable_ctx(BreakableKind::Border, None, None, |this| {
@@ -179,7 +180,7 @@ impl<'a> InferenceContext<'a> {
                 .1
             }
             Expr::Async { id, statements, tail } => {
-                self.infer_async_block(tgt_expr, id, statements, tail)
+                self.infer_async_block(tgt_expr, id, *statements, tail)
             }
             &Expr::Loop { body, label } => {
                 // FIXME: should be:
@@ -290,7 +291,7 @@ impl<'a> InferenceContext<'a> {
 
                 // Now go through the argument patterns
                 for (arg_pat, arg_ty) in args.iter().zip(&sig_tys) {
-                    self.infer_top_pat(*arg_pat, &arg_ty);
+                    self.infer_top_pat(arg_pat, &arg_ty);
                 }
 
                 // FIXME: lift these out into a struct
@@ -881,7 +882,7 @@ impl<'a> InferenceContext<'a> {
         &mut self,
         tgt_expr: ExprId,
         id: &Option<BlockId>,
-        statements: &[Statement],
+        statements: StmtRange,
         tail: &Option<ExprId>,
     ) -> Ty {
         let ret_ty = self.table.new_type_var();
@@ -1273,7 +1274,7 @@ impl<'a> InferenceContext<'a> {
         &mut self,
         expr: ExprId,
         block_id: Option<BlockId>,
-        statements: &[Statement],
+        statements: StmtRange,
         tail: Option<ExprId>,
         label: Option<LabelId>,
         expected: &Expectation,
@@ -1288,7 +1289,7 @@ impl<'a> InferenceContext<'a> {
 
         let (break_ty, ty) =
             self.with_breakable_ctx(BreakableKind::Block, Some(coerce_ty), label, |this| {
-                for stmt in statements {
+                for stmt in &self.body[statements] {
                     match stmt {
                         Statement::Let { pat, type_ref, initializer, else_branch } => {
                             let decl_ty = type_ref
