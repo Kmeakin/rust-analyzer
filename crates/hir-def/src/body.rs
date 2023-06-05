@@ -131,7 +131,7 @@ impl Body {
                         let crate_graph = db.crate_graph();
                         (
                             param_list,
-                            func.params.clone().map(move |param| {
+                            func.params.iter().map(move |param| {
                                 item_tree
                                     .attrs(db, krate, param.into())
                                     .is_cfg_enabled(&crate_graph[krate].cfg_options)

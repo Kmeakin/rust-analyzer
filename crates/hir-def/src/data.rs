@@ -60,7 +60,7 @@ impl FunctionData {
         let cfg_options = &crate_graph[krate].cfg_options;
         let enabled_params = func
             .params
-            .clone()
+            .iter()
             .filter(|&param| item_tree.attrs(db, krate, param.into()).is_cfg_enabled(cfg_options));
 
         // If last cfg-enabled param is a `...` param, it's a varargs function.
@@ -75,7 +75,7 @@ impl FunctionData {
         }
         if flags.contains(FnFlags::HAS_SELF_PARAM) {
             // If there's a self param in the syntax, but it is cfg'd out, remove the flag.
-            let is_cfgd_out = match func.params.clone().next() {
+            let is_cfgd_out = match func.params.iter().next() {
                 Some(param) => {
                     !item_tree.attrs(db, krate, param.into()).is_cfg_enabled(cfg_options)
                 }

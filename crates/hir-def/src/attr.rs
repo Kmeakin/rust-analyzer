@@ -137,7 +137,7 @@ impl Attrs {
 
                 let cfg_options = &crate_graph[krate].cfg_options;
 
-                let Some(variant) = enum_.variants.clone().filter(|variant| {
+                let Some(variant) = enum_.variants.iter().filter(|variant| {
                     let attrs = item_tree.attrs(db, krate, (*variant).into());
                     attrs.is_cfg_enabled(cfg_options)
                 })
