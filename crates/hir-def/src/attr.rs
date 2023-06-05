@@ -118,7 +118,7 @@ impl Attrs {
 
                 let Some(variant) = enum_
                     .variants
-                    .clone()
+                    .iter()
                     .filter(|variant| {
                         let attrs = item_tree.attrs(db, krate, (*variant).into());
                         attrs.is_cfg_enabled(cfg_options)

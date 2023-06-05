@@ -584,6 +584,6 @@ mod size_tests {
 
     #[test]
     fn statement_size() {
-        assert_eq!(std::mem::size_of::<Statement>(), 32);
+        assert_eq!(std::mem::size_of::<Statement>(), 24);
     }
 }

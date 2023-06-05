@@ -81,7 +81,7 @@ name = "base-db"
 version = "0.0.0"
 dependencies = [
  "cfg",
- "la-arena 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "la-arena",
  "profile",
  "rustc-hash",
  "salsa",
@@ -527,7 +527,7 @@ dependencies = [
  "indexmap 2.0.0",
  "intern",
  "itertools",
- "la-arena 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "la-arena",
  "limit",
  "mbe",
  "once_cell",
@@ -555,7 +555,7 @@ dependencies = [
  "hashbrown 0.12.3",
  "intern",
  "itertools",
- "la-arena 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "la-arena",
  "limit",
  "mbe",
  "profile",
@@ -587,7 +587,7 @@ dependencies = [
  "hir-expand",
  "intern",
  "itertools",
- "la-arena 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "la-arena",
  "limit",
  "nohash-hasher",
  "once_cell",
@@ -894,12 +894,6 @@ dependencies = [
 [[package]]
 name = "la-arena"
 version = "0.3.1"
-
-[[package]]
-name = "la-arena"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3752f229dcc5a481d60f385fa479ff46818033d881d2d801aa27dffcfb5e8306"
 
 [[package]]
 name = "lazy_static"
@@ -1393,7 +1387,7 @@ version = "0.0.0"
 dependencies = [
  "cfg-if",
  "countme",
- "la-arena 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "la-arena",
  "libc",
  "once_cell",
  "perf-event",
@@ -1411,7 +1405,7 @@ dependencies = [
  "cfg",
  "expect-test",
  "itertools",
- "la-arena 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "la-arena",
  "paths",
  "profile",
  "rustc-hash",

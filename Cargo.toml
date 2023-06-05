@@ -36,7 +36,7 @@ debug = 0
 # chalk-recursive = { path = "../chalk/chalk-recursive" }
 # chalk-derive = { path = "../chalk/chalk-derive" }
 # line-index = { path = "lib/line-index" }
-# la-arena = { path = "lib/la-arena" }
+la-arena = { path = "lib/la-arena" }
 # lsp-server = { path = "lib/lsp-server" }
 
 
