@@ -531,7 +531,7 @@ pub struct RecordFieldPat {
 pub enum Pat {
     Missing,
     Wild,
-    Tuple { args: Box<[PatId]>, ellipsis: Option<usize> },
+    Tuple { args: Box<[PatId]>, ellipsis: Option<u32> },
     Or(Box<[PatId]>),
     Record { path: Option<Box<Path>>, args: Box<[RecordFieldPat]>, ellipsis: bool },
     Range { start: Option<Box<LiteralOrConst>>, end: Option<Box<LiteralOrConst>> },
@@ -539,7 +539,7 @@ pub enum Pat {
     Path(Box<Path>),
     Lit(ExprId),
     Bind { id: BindingId, subpat: Option<PatId> },
-    TupleStruct { path: Option<Box<Path>>, args: Box<[PatId]>, ellipsis: Option<usize> },
+    TupleStruct { path: Option<Box<Path>>, args: Box<[PatId]>, ellipsis: Option<u32> },
     Ref { pat: PatId, mutability: Mutability },
     Box { inner: PatId },
     ConstBlock(ExprId),
@@ -585,7 +585,7 @@ mod size_tests {
 
     #[test]
     fn pat_size() {
-        assert_eq!(std::mem::size_of::<Pat>(), 48);
+        assert_eq!(std::mem::size_of::<Pat>(), 40);
     }
 
     #[test]

@@ -135,7 +135,7 @@ impl<'a> PatCtxt<'a> {
 
             hir_def::hir::Pat::Tuple { ref args, ellipsis } => {
                 let arity = match *ty.kind(Interner) {
-                    TyKind::Tuple(arity, _) => arity,
+                    TyKind::Tuple(arity, _) => arity as u32,
                     _ => {
                         never!("unexpected type for tuple pattern: {:?}", ty);
                         self.errors.push(PatternError::UnexpectedType);
@@ -164,7 +164,7 @@ impl<'a> PatCtxt<'a> {
 
             hir_def::hir::Pat::TupleStruct { ref args, ellipsis, .. } if variant.is_some() => {
                 let expected_len = variant.unwrap().variant_data(self.db.upcast()).fields().len();
-                let subpatterns = self.lower_tuple_subpats(args, expected_len, ellipsis);
+                let subpatterns = self.lower_tuple_subpats(args, expected_len as u32, ellipsis);
                 self.lower_variant_or_leaf(pat, ty, subpatterns)
             }
 
@@ -207,10 +207,10 @@ impl<'a> PatCtxt<'a> {
     fn lower_tuple_subpats(
         &mut self,
         pats: &[PatId],
-        expected_len: usize,
-        ellipsis: Option<usize>,
+        expected_len: u32,
+        ellipsis: Option<u32>,
     ) -> Vec<FieldPat> {
-        if pats.len() > expected_len {
+        if pats.len() as u32 > expected_len {
             self.errors.push(PatternError::ExtraFields);
             return Vec::new();
         }
@@ -218,7 +218,7 @@ impl<'a> PatCtxt<'a> {
         pats.iter()
             .enumerate_and_adjust(expected_len, ellipsis)
             .map(|(i, &subpattern)| FieldPat {
-                field: LocalFieldId::from_raw((i as u32).into()),
+                field: LocalFieldId::from_raw(i.into()),
                 pattern: self.lower_pattern(subpattern),
             })
             .collect()

@@ -13,7 +13,7 @@ macro_rules! not_supported {
 }
 
 pub(super) enum AdtPatternShape<'a> {
-    Tuple { args: &'a [PatId], ellipsis: Option<usize> },
+    Tuple { args: &'a [PatId], ellipsis: Option<u32> },
     Record { args: &'a [RecordFieldPat] },
     Unit,
 }
@@ -601,12 +601,12 @@ impl MirLowerCtx<'_> {
         current: BasicBlockId,
         current_else: Option<BasicBlockId>,
         args: &[PatId],
-        ellipsis: Option<usize>,
+        ellipsis: Option<u32>,
         fields: impl DoubleEndedIterator<Item = PlaceElem> + Clone,
         cond_place: &Place,
         mode: MatchingMode,
     ) -> Result<(BasicBlockId, Option<BasicBlockId>)> {
-        let (al, ar) = args.split_at(ellipsis.unwrap_or(args.len()));
+        let (al, ar) = args.split_at(ellipsis.unwrap_or(args.len() as u32) as usize);
         let it = al
             .iter()
             .zip(fields.clone())

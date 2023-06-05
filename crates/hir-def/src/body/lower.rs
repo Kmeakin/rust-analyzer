@@ -1391,10 +1391,11 @@ impl ExprCollector<'_> {
         args: AstChildren<ast::Pat>,
         has_leading_comma: bool,
         binding_list: &mut BindingList,
-    ) -> (Box<[PatId]>, Option<usize>) {
+    ) -> (Box<[PatId]>, Option<u32>) {
         // Find the location of the `..`, if there is one. Note that we do not
         // consider the possibility of there being multiple `..` here.
-        let ellipsis = args.clone().position(|p| matches!(p, ast::Pat::RestPat(_)));
+        let ellipsis =
+            args.clone().position(|p| matches!(p, ast::Pat::RestPat(_))).map(|p| p as u32);
         // We want to skip the `..` pattern here, since we account for it above.
         let mut args: Vec<_> = args
             .filter(|p| !matches!(p, ast::Pat::RestPat(_)))
