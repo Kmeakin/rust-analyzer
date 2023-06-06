@@ -14,7 +14,7 @@
 
 pub mod type_ref;
 
-use std::fmt;
+use std::{fmt, num::NonZeroU32};
 
 use hir_expand::name::Name;
 use intern::Interned;
@@ -540,7 +540,7 @@ pub type RecordFieldPatRange = IdxRange<RecordFieldPat>;
 pub enum Pat {
     Missing,
     Wild,
-    Tuple { args: PatRange, ellipsis: Option<u32> },
+    Tuple { args: PatRange, ellipsis: Option<Ellipsis> },
     Or(PatRange),
     Record { path: Option<Box<Path>>, args: RecordFieldPatRange, ellipsis: bool },
     Range { start: Option<Box<LiteralOrConst>>, end: Option<Box<LiteralOrConst>> },
@@ -548,10 +548,25 @@ pub enum Pat {
     Path(Box<Path>),
     Lit(ExprId),
     Bind { id: BindingId, subpat: Option<PatId> },
-    TupleStruct { path: Option<Box<Path>>, args: PatRange, ellipsis: Option<u32> },
+    TupleStruct { path: Option<Box<Path>>, args: PatRange, ellipsis: Option<Ellipsis> },
     Ref { pat: PatId, mutability: Mutability },
     Box { inner: PatId },
     ConstBlock(ExprId),
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Ellipsis(NonZeroU32);
+
+impl From<usize> for Ellipsis {
+    fn from(value: usize) -> Self {
+        unsafe { Self(NonZeroU32::new_unchecked((value as u32).saturating_add(1))) }
+    }
+}
+
+impl From<Ellipsis> for usize {
+    fn from(value: Ellipsis) -> Self {
+        value.0.get().saturating_sub(1) as usize
+    }
 }
 
 impl Pat {
@@ -593,7 +608,7 @@ mod size_tests {
 
     #[test]
     fn pat_size() {
-        assert_eq!(std::mem::size_of::<Pat>(), 32);
+        assert_eq!(std::mem::size_of::<Pat>(), 24);
     }
 
     #[test]

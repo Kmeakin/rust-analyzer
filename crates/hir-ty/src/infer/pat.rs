@@ -69,7 +69,7 @@ impl<'a> InferenceContext<'a> {
         expected: &Ty,
         default_bm: T::BindingMode,
         id: T,
-        ellipsis: Option<u32>,
+        ellipsis: Option<usize>,
         subs: &[T],
     ) -> Ty {
         let (ty, def) = self.resolve_variant(path, true);
@@ -84,7 +84,7 @@ impl<'a> InferenceContext<'a> {
 
         let field_tys = def.map(|it| self.db.field_types(it)).unwrap_or_default();
         let (pre, post) = match ellipsis {
-            Some(idx) => subs.split_at(idx as usize),
+            Some(idx) => subs.split_at(idx),
             None => (subs, &[][..]),
         };
         let post_idx_offset = field_tys.iter().count().saturating_sub(post.len());
@@ -147,7 +147,7 @@ impl<'a> InferenceContext<'a> {
         &mut self,
         expected: &Ty,
         default_bm: T::BindingMode,
-        ellipsis: Option<u32>,
+        ellipsis: Option<usize>,
         subs: &[T],
     ) -> Ty {
         let expected = self.resolve_ty_shallow(expected);
@@ -157,9 +157,7 @@ impl<'a> InferenceContext<'a> {
         };
 
         let ((pre, post), n_uncovered_patterns) = match ellipsis {
-            Some(idx) => {
-                (subs.split_at(idx as usize), expectations.len().saturating_sub(subs.len()))
-            }
+            Some(idx) => (subs.split_at(idx), expectations.len().saturating_sub(subs.len())),
             None => ((&subs[..], &[][..]), 0),
         };
         let mut expectations_iter = expectations
@@ -224,7 +222,7 @@ impl<'a> InferenceContext<'a> {
             Pat::Tuple { args, ellipsis } => self.infer_tuple_pat_like(
                 &expected,
                 default_bm,
-                *ellipsis,
+                ellipsis.map(usize::from),
                 &args.iter().collect::<Vec<_>>(),
             ),
             Pat::Or(pats) => {
@@ -245,7 +243,7 @@ impl<'a> InferenceContext<'a> {
                     &expected,
                     default_bm,
                     pat,
-                    *ellipsis,
+                    ellipsis.map(usize::from),
                     &subpats.iter().collect::<Vec<_>>(),
                 ),
             Pat::Record { path: p, args: fields, ellipsis: _ } => {

@@ -14,10 +14,11 @@ use chalk_ir::Mutability;
 use hir_def::{
     body::Body,
     data::adt::VariantData,
-    hir::{PatId, PatRange},
+    hir::{Ellipsis, PatId, PatRange},
     AdtId, EnumVariantId, LocalFieldId, VariantId,
 };
 use hir_expand::name::Name;
+use la_arena::RawIdx;
 use stdx::{always, never};
 
 use crate::{
@@ -138,7 +139,7 @@ impl<'a> PatCtxt<'a> {
 
             hir_def::hir::Pat::Tuple { args, ellipsis } => {
                 let arity = match *ty.kind(Interner) {
-                    TyKind::Tuple(arity, _) => arity as u32,
+                    TyKind::Tuple(arity, _) => arity,
                     _ => {
                         never!("unexpected type for tuple pattern: {:?}", ty);
                         self.errors.push(PatternError::UnexpectedType);
@@ -167,7 +168,7 @@ impl<'a> PatCtxt<'a> {
 
             hir_def::hir::Pat::TupleStruct { args, ellipsis, .. } if variant.is_some() => {
                 let expected_len = variant.unwrap().variant_data(self.db.upcast()).fields().len();
-                let subpatterns = self.lower_tuple_subpats(args, expected_len as u32, ellipsis);
+                let subpatterns = self.lower_tuple_subpats(args, expected_len, ellipsis);
                 self.lower_variant_or_leaf(pat, ty, subpatterns)
             }
 
@@ -210,18 +211,18 @@ impl<'a> PatCtxt<'a> {
     fn lower_tuple_subpats(
         &mut self,
         pats: PatRange,
-        expected_len: u32,
-        ellipsis: Option<u32>,
+        expected_len: usize,
+        ellipsis: Option<Ellipsis>,
     ) -> Vec<FieldPat> {
-        if pats.len() as u32 > expected_len {
+        if pats.len() > expected_len {
             self.errors.push(PatternError::ExtraFields);
             return Vec::new();
         }
 
         pats.iter()
-            .enumerate_and_adjust(expected_len, ellipsis)
+            .enumerate_and_adjust(expected_len, ellipsis.map(usize::from))
             .map(|(i, subpattern)| FieldPat {
-                field: LocalFieldId::from_raw(i.into()),
+                field: LocalFieldId::from_raw(RawIdx::from_u32(i as u32)),
                 pattern: self.lower_pattern(subpattern),
             })
             .collect()

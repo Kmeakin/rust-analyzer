@@ -9,7 +9,7 @@ use hir_def::{
     data::adt::{StructKind, VariantData},
     hir::{
         ArithOp, Array, BinaryOp, BindingAnnotation, BindingId, ExprId, LabelId, Literal,
-        LiteralOrConst, MatchArm, Pat, PatId, RecordFieldPat, RecordLitField, StmtRange,
+        LiteralOrConst, MatchArm, Pat, PatId, RecordLitField, StmtRange,
     },
     lang_item::{LangItem, LangItemTarget},
     path::Path,

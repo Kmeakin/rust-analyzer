@@ -1092,7 +1092,7 @@ impl<'a> InferenceContext<'a> {
             Expr::Tuple { exprs, .. } => {
                 // We don't consider multiple ellipses. This is analogous to
                 // `hir_def::body::lower::ExprCollector::collect_tuple_pat()`.
-                let ellipsis = exprs.iter().position(|e| is_rest_expr(e)).map(|p| p as u32);
+                let ellipsis = exprs.iter().position(|e| is_rest_expr(e));
                 let exprs: Vec<_> = exprs.iter().filter(|e| !is_rest_expr(*e)).collect();
 
                 self.infer_tuple_pat_like(&rhs_ty, (), ellipsis, &exprs)
@@ -1106,7 +1106,7 @@ impl<'a> InferenceContext<'a> {
 
                 // We don't consider multiple ellipses. This is analogous to
                 // `hir_def::body::lower::ExprCollector::collect_tuple_pat()`.
-                let ellipsis = args.iter().position(|e| is_rest_expr(e)).map(|p| p as u32);
+                let ellipsis = args.iter().position(|e| is_rest_expr(e));
                 let args: Vec<_> = args.iter().filter(|e| !is_rest_expr(*e)).collect();
 
                 self.infer_tuple_struct_pat_like(path, &rhs_ty, (), lhs, ellipsis, &args)

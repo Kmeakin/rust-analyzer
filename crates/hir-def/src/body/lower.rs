@@ -31,8 +31,9 @@ use crate::{
     expander::Expander,
     hir::{
         dummy_expr_id, Array, Binding, BindingAnnotation, BindingId, BindingProblems, CaptureBy,
-        ClosureKind, Expr, ExprId, ExprRange, Label, LabelId, Literal, LiteralOrConst, MatchArm,
-        Movability, Pat, PatId, PatRange, RecordFieldPat, RecordLitField, Statement, StmtRange,
+        ClosureKind, Ellipsis, Expr, ExprId, ExprRange, Label, LabelId, Literal, LiteralOrConst,
+        MatchArm, Movability, Pat, PatId, PatRange, RecordFieldPat, RecordLitField, Statement,
+        StmtRange,
     },
     item_scope::BuiltinShadowMode,
     lang_item::LangItem,
@@ -1446,11 +1447,11 @@ impl ExprCollector<'_> {
         args: AstChildren<ast::Pat>,
         has_leading_comma: bool,
         binding_list: &mut BindingList,
-    ) -> (PatRange, Option<u32>) {
+    ) -> (PatRange, Option<Ellipsis>) {
         // Find the location of the `..`, if there is one. Note that we do not
         // consider the possibility of there being multiple `..` here.
         let ellipsis =
-            args.clone().position(|p| matches!(p, ast::Pat::RestPat(_))).map(|p| p as u32);
+            args.clone().position(|p| matches!(p, ast::Pat::RestPat(_))).map(Ellipsis::from);
         // We want to skip the `..` pattern here, since we account for it above.
         let args = args
             .filter(|p| !matches!(p, ast::Pat::RestPat(_)))

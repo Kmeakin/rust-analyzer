@@ -1,7 +1,7 @@
 //! MIR lowering for patterns
 
 use hir_def::{
-    hir::{LiteralOrConst, PatRange, RecordFieldPatRange},
+    hir::{Ellipsis, LiteralOrConst, PatRange, RecordFieldPatRange},
     resolver::HasResolver,
     AssocItemId,
 };
@@ -17,7 +17,7 @@ macro_rules! not_supported {
 }
 
 pub(super) enum AdtPatternShape {
-    Tuple { args: PatRange, ellipsis: Option<u32> },
+    Tuple { args: PatRange, ellipsis: Option<Ellipsis> },
     Record { args: RecordFieldPatRange },
     Unit,
 }
@@ -605,12 +605,12 @@ impl MirLowerCtx<'_> {
         current: BasicBlockId,
         current_else: Option<BasicBlockId>,
         args: PatRange,
-        ellipsis: Option<u32>,
+        ellipsis: Option<Ellipsis>,
         fields: impl DoubleEndedIterator<Item = PlaceElem> + Clone,
         cond_place: &Place,
         mode: MatchingMode,
     ) -> Result<(BasicBlockId, Option<BasicBlockId>)> {
-        let (al, ar) = args.split_at(ellipsis.unwrap_or(args.len() as u32) as usize);
+        let (al, ar) = args.split_at(ellipsis.map(usize::from).unwrap_or(args.len()));
         let it = al
             .iter()
             .zip(fields.clone())
