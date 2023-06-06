@@ -20,7 +20,7 @@ use hir_expand::name::Name;
 use intern::Interned;
 use la_arena::{Idx, IdxRange, RawIdx};
 use smallvec::SmallVec;
-use syntax::ast;
+use syntax::ast::{self};
 
 use crate::{
     body::Body,
@@ -532,6 +532,9 @@ pub struct RecordFieldPat {
     pub pat: PatId,
 }
 
+pub type RecordFieldPatIdx = Idx<RecordFieldPat>;
+pub type RecordFieldPatRange = IdxRange<RecordFieldPat>;
+
 /// Close relative to rustc's hir::PatKind
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Pat {
@@ -539,7 +542,7 @@ pub enum Pat {
     Wild,
     Tuple { args: PatRange, ellipsis: Option<u32> },
     Or(PatRange),
-    Record { path: Option<Box<Path>>, args: Box<[RecordFieldPat]>, ellipsis: bool },
+    Record { path: Option<Box<Path>>, args: RecordFieldPatRange, ellipsis: bool },
     Range { start: Option<Box<LiteralOrConst>>, end: Option<Box<LiteralOrConst>> },
     Slice { prefix: PatRange, slice: Option<PatId>, suffix: PatRange },
     Path(Box<Path>),
@@ -552,7 +555,7 @@ pub enum Pat {
 }
 
 impl Pat {
-    pub fn walk_child_pats(&self, mut f: impl FnMut(PatId)) {
+    pub fn walk_child_pats(&self, body: &Body, mut f: impl FnMut(PatId)) {
         match self {
             Pat::Range { .. }
             | Pat::Lit(..)
@@ -571,7 +574,7 @@ impl Pat {
                 prefix.iter().chain(slice.iter().copied()).chain(suffix.iter()).for_each(f)
             }
             Pat::Record { args, .. } => {
-                args.iter().map(|f| f.pat).for_each(f);
+                body[*args].iter().for_each(|RecordFieldPat { pat, .. }| f(*pat))
             }
             Pat::Box { inner } => f(*inner),
         }

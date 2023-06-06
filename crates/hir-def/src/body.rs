@@ -23,7 +23,7 @@ use crate::{
     expander::Expander,
     hir::{
         dummy_expr_id, Binding, BindingId, Expr, ExprId, Label, LabelId, Pat, PatId, PatRange,
-        RecordFieldPat, Statement, StmtId, StmtRange,
+        RecordFieldPat, RecordFieldPatIdx, RecordFieldPatRange, Statement, StmtId, StmtRange,
     },
     nameres::DefMap,
     path::{ModPath, Path},
@@ -37,6 +37,7 @@ pub struct Body {
     pub exprs: Arena<Expr>,
     pub pats: Arena<Pat>,
     pub stmts: Arena<Statement>,
+    pub record_field_pats: Arena<RecordFieldPat>,
     pub bindings: Arena<Binding>,
     pub labels: Arena<Label>,
     /// The patterns for the function's parameters. While the parameter types are
@@ -220,6 +221,7 @@ impl Body {
             params: _,
             pats,
             stmts,
+            record_field_pats,
             bindings,
         } = self;
         block_scopes.shrink_to_fit();
@@ -227,18 +229,19 @@ impl Body {
         labels.shrink_to_fit();
         pats.shrink_to_fit();
         stmts.shrink_to_fit();
+        record_field_pats.shrink_to_fit();
         bindings.shrink_to_fit();
     }
 
-    pub fn walk_bindings_in_pat(&self, pat_id: PatId, mut f: impl FnMut(BindingId)) {
-        self.walk_pats(pat_id, &mut |pat| {
+    pub fn walk_bindings_in_pat(&self, body: &Body, pat_id: PatId, mut f: impl FnMut(BindingId)) {
+        self.walk_pats(body, pat_id, &mut |pat| {
             if let Pat::Bind { id, .. } = &self[pat] {
                 f(*id);
             }
         });
     }
 
-    pub fn walk_pats_shallow(&self, pat_id: PatId, mut f: impl FnMut(PatId)) {
+    pub fn walk_pats_shallow(&self, body: &Body, pat_id: PatId, mut f: impl FnMut(PatId)) {
         let pat = &self[pat_id];
         match pat {
             Pat::Range { .. }
@@ -260,15 +263,15 @@ impl Body {
                 prefix.iter().chain(slice.iter().copied()).chain(suffix.iter()).for_each(f)
             }
             Pat::Record { args, .. } => {
-                args.iter().for_each(|RecordFieldPat { pat, .. }| f(*pat));
+                body[*args].iter().for_each(|RecordFieldPat { pat, .. }| f(*pat))
             }
             Pat::Box { inner } => f(*inner),
         }
     }
 
-    pub fn walk_pats(&self, pat_id: PatId, f: &mut impl FnMut(PatId)) {
+    pub fn walk_pats(&self, body: &Body, pat_id: PatId, f: &mut impl FnMut(PatId)) {
         f(pat_id);
-        self.walk_pats_shallow(pat_id, |p| self.walk_pats(p, f));
+        self.walk_pats_shallow(body, pat_id, |p| self.walk_pats(body, p, f));
     }
 }
 
@@ -279,6 +282,7 @@ impl Default for Body {
             exprs: Default::default(),
             pats: Default::default(),
             stmts: Default::default(),
+            record_field_pats: Default::default(),
             bindings: Default::default(),
             labels: Default::default(),
             params: Default::default(),
@@ -325,6 +329,22 @@ impl Index<StmtRange> for Body {
 
     fn index(&self, stmts: StmtRange) -> &Self::Output {
         &self.stmts[stmts]
+    }
+}
+
+impl Index<RecordFieldPatIdx> for Body {
+    type Output = RecordFieldPat;
+
+    fn index(&self, index: RecordFieldPatIdx) -> &Self::Output {
+        &self.record_field_pats[index]
+    }
+}
+
+impl Index<RecordFieldPatRange> for Body {
+    type Output = [RecordFieldPat];
+
+    fn index(&self, index: RecordFieldPatRange) -> &Self::Output {
+        &self.record_field_pats[index]
     }
 }
 

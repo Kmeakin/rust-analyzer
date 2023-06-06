@@ -156,7 +156,7 @@ impl ExprScopes {
             self.add_bindings(body, scope, *id);
         }
 
-        pattern.walk_child_pats(|pat| self.add_pat_bindings(body, scope, pat));
+        pattern.walk_child_pats(body, |pat| self.add_pat_bindings(body, scope, pat));
     }
 
     fn add_params_bindings(&mut self, body: &Body, scope: ScopeId, params: PatRange) {

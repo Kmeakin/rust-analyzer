@@ -249,7 +249,7 @@ impl<'a> InferenceContext<'a> {
                     &subpats.iter().collect::<Vec<_>>(),
                 ),
             Pat::Record { path: p, args: fields, ellipsis: _ } => {
-                let subs = fields.iter().map(|f| (f.name.clone(), f.pat));
+                let subs = self.body[*fields].iter().map(|f| (f.name.clone(), f.pat));
                 self.infer_record_pat_like(p.as_deref(), &expected, default_bm, pat, subs)
             }
             Pat::Path(path) => {
@@ -453,7 +453,7 @@ fn is_non_ref_pat(body: &hir_def::body::Body, pat: PatId) -> bool {
 
 pub(super) fn contains_explicit_ref_binding(body: &Body, pat_id: PatId) -> bool {
     let mut res = false;
-    body.walk_pats(pat_id, &mut |pat| {
+    body.walk_pats(body,pat_id, &mut |pat| {
         res |= matches!(body[pat], Pat::Bind { id, .. } if body.bindings[id].mode == BindingAnnotation::Ref);
     });
     res

@@ -513,7 +513,7 @@ impl<'a> Printer<'a> {
 
                 w!(self, " {{");
                 self.indented(|p| {
-                    for arg in args.iter() {
+                    for arg in &self.body[*args] {
                         w!(p, "{}: ", arg.name.display(self.db));
                         p.print_pat(arg.pat);
                         wln!(p, ",");

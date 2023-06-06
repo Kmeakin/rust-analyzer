@@ -695,7 +695,8 @@ impl InferenceContext<'_> {
         if self.result.pat_adjustments.get(&p).map_or(false, |x| !x.is_empty()) {
             for_mut = BorrowKind::Unique;
         }
-        self.body.walk_pats_shallow(p, |p| self.walk_pat_inner(p, update_result, for_mut));
+        self.body
+            .walk_pats_shallow(self.body, p, |p| self.walk_pat_inner(p, update_result, for_mut));
     }
 
     fn expr_ty(&self, expr: ExprId) -> Ty {
@@ -818,7 +819,7 @@ impl InferenceContext<'_> {
                     }
                     VariantId::StructId(s) => {
                         let vd = &*self.db.struct_data(s).variant_data;
-                        for field_pat in args.iter() {
+                        for field_pat in &self.body[*args] {
                             let arg = field_pat.pat;
                             let Some(local_id) = vd.field(&field_pat.name) else {
                                 continue;

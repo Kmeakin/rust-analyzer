@@ -727,7 +727,7 @@ impl SourceAnalyzer {
         let substs = infer.type_of_pat[pat_id].as_adt()?.1;
 
         let (variant, missing_fields, _exhaustive) =
-            record_pattern_missing_fields(db, infer, pat_id, &body[pat_id])?;
+            record_pattern_missing_fields(db, infer, body, pat_id, &body[pat_id])?;
         let res = self.missing_fields(db, substs, variant, missing_fields);
         Some(res)
     }

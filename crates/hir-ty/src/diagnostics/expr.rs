@@ -94,7 +94,7 @@ impl ExprValidator {
         }
         for (id, pat) in body.pats.iter() {
             if let Some((variant, missed_fields, true)) =
-                record_pattern_missing_fields(db, &self.infer, id, pat)
+                record_pattern_missing_fields(db, &self.infer, &body, id, pat)
             {
                 self.diagnostics.push(BodyValidationDiagnostic::RecordMissingFields {
                     record: Either::Right(id),
@@ -329,6 +329,7 @@ pub fn record_literal_missing_fields(
 pub fn record_pattern_missing_fields(
     db: &dyn HirDatabase,
     infer: &InferenceResult,
+    body: &Body,
     id: PatId,
     pat: &Pat,
 ) -> Option<(VariantId, Vec<LocalFieldId>, /*exhaustive*/ bool)> {
@@ -344,7 +345,7 @@ pub fn record_pattern_missing_fields(
 
     let variant_data = variant_def.variant_data(db.upcast());
 
-    let specified_fields: FxHashSet<_> = fields.iter().map(|f| &f.name).collect();
+    let specified_fields: FxHashSet<_> = body[*fields].iter().map(|f| &f.name).collect();
     let missed_fields: Vec<LocalFieldId> = variant_data
         .fields()
         .iter()
@@ -360,9 +361,8 @@ fn types_of_subpatterns_do_match(pat: PatId, body: &Body, infer: &InferenceResul
     fn walk(pat: PatId, body: &Body, infer: &InferenceResult, has_type_mismatches: &mut bool) {
         match infer.type_mismatch_for_pat(pat) {
             Some(_) => *has_type_mismatches = true,
-            None => {
-                body[pat].walk_child_pats(|subpat| walk(subpat, body, infer, has_type_mismatches))
-            }
+            None => body[pat]
+                .walk_child_pats(body, |subpat| walk(subpat, body, infer, has_type_mismatches)),
         }
     }
 

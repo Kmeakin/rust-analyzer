@@ -63,6 +63,7 @@ pub(super) fn lower(
             exprs: Arena::default(),
             pats: Arena::default(),
             stmts: Arena::default(),
+            record_field_pats: Arena::default(),
             bindings: Arena::default(),
             labels: Arena::default(),
             params: PatRange::empty(),
@@ -1253,7 +1254,7 @@ impl ExprCollector<'_> {
             ast::Pat::RecordPat(p) => {
                 let path =
                     p.path().and_then(|path| self.expander.parse_path(self.db, path)).map(Box::new);
-                let args = p
+                let args: Vec<_> = p
                     .record_pat_field_list()
                     .expect("every struct should have a field list")
                     .fields()
@@ -1264,6 +1265,7 @@ impl ExprCollector<'_> {
                         Some(RecordFieldPat { name, pat })
                     })
                     .collect();
+                let args = self.body.record_field_pats.alloc_many(args);
 
                 let ellipsis = p
                     .record_pat_field_list()

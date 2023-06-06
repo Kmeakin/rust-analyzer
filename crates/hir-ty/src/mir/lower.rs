@@ -1564,7 +1564,7 @@ impl<'ctx> MirLowerCtx<'ctx> {
                         }
                     } else {
                         let mut err = None;
-                        self.body.walk_bindings_in_pat(*pat, |b| {
+                        self.body.walk_bindings_in_pat(self.body, *pat, |b| {
                             if let Err(e) = self.push_storage_live(b, current) {
                                 err = Some(e);
                             }

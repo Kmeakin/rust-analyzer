@@ -171,9 +171,9 @@ impl<'a> PatCtxt<'a> {
                 self.lower_variant_or_leaf(pat, ty, subpatterns)
             }
 
-            hir_def::hir::Pat::Record { ref args, .. } if variant.is_some() => {
+            hir_def::hir::Pat::Record { args, .. } if variant.is_some() => {
                 let variant_data = variant.unwrap().variant_data(self.db.upcast());
-                let subpatterns = args
+                let subpatterns = self.body[args]
                     .iter()
                     .map(|field| {
                         // XXX(iDawer): field lookup is inefficient

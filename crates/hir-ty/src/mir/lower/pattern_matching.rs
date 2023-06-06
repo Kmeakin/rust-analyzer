@@ -1,7 +1,7 @@
 //! MIR lowering for patterns
 
 use hir_def::{
-    hir::{LiteralOrConst, PatRange},
+    hir::{LiteralOrConst, PatRange, RecordFieldPatRange},
     resolver::HasResolver,
     AssocItemId,
 };
@@ -16,9 +16,9 @@ macro_rules! not_supported {
     };
 }
 
-pub(super) enum AdtPatternShape<'a> {
+pub(super) enum AdtPatternShape {
     Tuple { args: PatRange, ellipsis: Option<u32> },
-    Record { args: &'a [RecordFieldPat] },
+    Record { args: RecordFieldPatRange },
     Unit,
 }
 
@@ -165,7 +165,7 @@ impl MirLowerCtx<'_> {
                     current,
                     pattern.into(),
                     current_else,
-                    AdtPatternShape::Record { args: &*args },
+                    AdtPatternShape::Record { args: *args },
                     mode,
                 )?
             }
@@ -485,7 +485,7 @@ impl MirLowerCtx<'_> {
         mut current: BasicBlockId,
         span: MirSpan,
         mut current_else: Option<BasicBlockId>,
-        shape: AdtPatternShape<'_>,
+        shape: AdtPatternShape,
         mode: MatchingMode,
     ) -> Result<(BasicBlockId, Option<BasicBlockId>)> {
         Ok(match variant {
@@ -542,7 +542,7 @@ impl MirLowerCtx<'_> {
 
     fn pattern_matching_variant_fields(
         &mut self,
-        shape: AdtPatternShape<'_>,
+        shape: AdtPatternShape,
         variant_data: &VariantData,
         v: VariantId,
         current: BasicBlockId,
@@ -552,7 +552,7 @@ impl MirLowerCtx<'_> {
     ) -> Result<(BasicBlockId, Option<BasicBlockId>)> {
         Ok(match shape {
             AdtPatternShape::Record { args } => {
-                let it = args
+                let it = self.body[args]
                     .iter()
                     .map(|x| {
                         let field_id =
