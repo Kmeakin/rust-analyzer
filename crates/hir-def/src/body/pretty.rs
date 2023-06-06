@@ -190,8 +190,8 @@ impl<'a> Printer<'a> {
                 w!(self, "(");
                 if !args.is_empty() {
                     self.indented(|p| {
-                        for arg in &**args {
-                            p.print_expr(*arg);
+                        for arg in *args {
+                            p.print_expr(arg);
                             wln!(p, ",");
                         }
                     });
@@ -209,8 +209,8 @@ impl<'a> Printer<'a> {
                 w!(self, "(");
                 if !args.is_empty() {
                     self.indented(|p| {
-                        for arg in &**args {
-                            p.print_expr(*arg);
+                        for arg in *args {
+                            p.print_expr(arg);
                             wln!(p, ",");
                         }
                     });
@@ -411,7 +411,7 @@ impl<'a> Printer<'a> {
             Expr::Tuple { exprs, is_assignee_expr: _ } => {
                 w!(self, "(");
                 for expr in exprs.iter() {
-                    self.print_expr(*expr);
+                    self.print_expr(expr);
                     w!(self, ", ");
                 }
                 w!(self, ")");
@@ -422,7 +422,7 @@ impl<'a> Printer<'a> {
                     self.indented(|p| match arr {
                         Array::ElementList { elements, is_assignee_expr: _ } => {
                             for elem in elements.iter() {
-                                p.print_expr(*elem);
+                                p.print_expr(elem);
                                 w!(p, ", ");
                             }
                         }

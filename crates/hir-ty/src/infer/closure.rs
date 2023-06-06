@@ -494,11 +494,11 @@ impl InferenceContext<'_> {
             }
             Expr::Call { callee, args, is_assignee_expr: _ } => {
                 self.consume_expr(*callee);
-                self.consume_exprs(args.iter().copied());
+                self.consume_exprs(args.iter());
             }
             Expr::MethodCall { receiver, args, .. } => {
                 self.consume_expr(*receiver);
-                self.consume_exprs(args.iter().copied());
+                self.consume_exprs(args.iter());
             }
             Expr::Match { expr, arms } => {
                 for arm in arms.iter() {
@@ -621,9 +621,7 @@ impl InferenceContext<'_> {
                 self.current_captures = cc;
             }
             Expr::Array(Array::ElementList { elements: exprs, is_assignee_expr: _ })
-            | Expr::Tuple { exprs, is_assignee_expr: _ } => {
-                self.consume_exprs(exprs.iter().copied())
-            }
+            | Expr::Tuple { exprs, is_assignee_expr: _ } => self.consume_exprs(exprs.iter()),
             Expr::Missing
             | Expr::Continue { .. }
             | Expr::Path(_)

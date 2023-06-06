@@ -35,6 +35,7 @@ pub use syntax::ast::{ArithOp, BinaryOp, CmpOp, LogicOp, Ordering, RangeOp, Unar
 pub type BindingId = Idx<Binding>;
 
 pub type ExprId = Idx<Expr>;
+pub type ExprRange = IdxRange<Expr>;
 
 /// FIXME: this is a hacky function which should be removed
 pub(crate) fn dummy_expr_id() -> ExprId {
@@ -203,13 +204,13 @@ pub enum Expr {
     },
     Call {
         callee: ExprId,
-        args: Box<[ExprId]>,
+        args: ExprRange,
         is_assignee_expr: bool,
     },
     MethodCall {
         receiver: ExprId,
         method_name: Name,
-        args: Box<[ExprId]>,
+        args: ExprRange,
         generic_args: Option<Box<GenericArgs>>,
     },
     Match {
@@ -285,7 +286,7 @@ pub enum Expr {
         capture_by: CaptureBy,
     },
     Tuple {
-        exprs: Box<[ExprId]>,
+        exprs: ExprRange,
         is_assignee_expr: bool,
     },
     Array(Array),
@@ -316,7 +317,7 @@ pub enum Movability {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Array {
-    ElementList { elements: Box<[ExprId]>, is_assignee_expr: bool },
+    ElementList { elements: ExprRange, is_assignee_expr: bool },
     Repeat { initializer: ExprId, repeat: ExprId },
 }
 
@@ -390,11 +391,11 @@ impl Expr {
             }
             Expr::Call { callee, args, .. } => {
                 f(*callee);
-                args.iter().copied().for_each(f);
+                args.iter().for_each(f);
             }
             Expr::MethodCall { receiver, args, .. } => {
                 f(*receiver);
-                args.iter().copied().for_each(f);
+                args.iter().for_each(f);
             }
             Expr::Match { expr, arms } => {
                 f(*expr);
@@ -444,9 +445,9 @@ impl Expr {
             | Expr::Box { expr } => {
                 f(*expr);
             }
-            Expr::Tuple { exprs, .. } => exprs.iter().copied().for_each(f),
+            Expr::Tuple { exprs, .. } => exprs.iter().for_each(f),
             Expr::Array(a) => match a {
-                Array::ElementList { elements, .. } => elements.iter().copied().for_each(f),
+                Array::ElementList { elements, .. } => elements.iter().for_each(f),
                 Array::Repeat { initializer, repeat } => {
                     f(*initializer);
                     f(*repeat)
@@ -517,8 +518,8 @@ impl Binding {
         match self.owner {
             Some(x) => {
                 // We assign expression ids in a way that outer closures will receive
-                // a lower id
-                x.into_raw() < relative_to.into_raw()
+                // a higher id
+                x.into_raw() > relative_to.into_raw()
             }
             None => true,
         }
@@ -584,7 +585,7 @@ mod size_tests {
 
     #[test]
     fn expr_size() {
-        assert_eq!(std::mem::size_of::<Expr>(), 56);
+        assert_eq!(std::mem::size_of::<Expr>(), 48);
     }
 
     #[test]

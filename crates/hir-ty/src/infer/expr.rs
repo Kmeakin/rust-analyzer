@@ -11,8 +11,8 @@ use chalk_ir::{
 use hir_def::{
     generics::TypeOrConstParamData,
     hir::{
-        ArithOp, Array, BinaryOp, ClosureKind, Expr, ExprId, LabelId, Literal, Statement,
-        StmtRange, UnaryOp,
+        ArithOp, Array, BinaryOp, ClosureKind, Expr, ExprId, ExprRange, LabelId, Literal,
+        Statement, StmtRange, UnaryOp,
     },
     lang_item::{LangItem, LangItemTarget},
     path::{GenericArg, GenericArgs},
@@ -370,7 +370,7 @@ impl<'a> InferenceContext<'a> {
                         (Vec::new(), self.err_ty())
                     }
                 };
-                let indices_to_skip = self.check_legacy_const_generics(derefed_callee, args);
+                let indices_to_skip = self.check_legacy_const_generics(derefed_callee, *args);
                 self.register_obligations_for_call(&callee_ty);
 
                 let expected_inputs = self.expected_inputs_for_expected_output(
@@ -381,7 +381,7 @@ impl<'a> InferenceContext<'a> {
 
                 self.check_call_arguments(
                     tgt_expr,
-                    args,
+                    *args,
                     &expected_inputs,
                     &param_tys,
                     &indices_to_skip,
@@ -393,7 +393,7 @@ impl<'a> InferenceContext<'a> {
                 .infer_method_call(
                     tgt_expr,
                     *receiver,
-                    args,
+                    *args,
                     method_name,
                     generic_args.as_deref(),
                     expected,
@@ -794,7 +794,7 @@ impl<'a> InferenceContext<'a> {
                 };
 
                 for (expr, ty) in exprs.iter().zip(tys.iter_mut()) {
-                    self.infer_expr_coerce(*expr, &Expectation::has_type(ty.clone()));
+                    self.infer_expr_coerce(expr, &Expectation::has_type(ty.clone()));
                 }
 
                 TyKind::Tuple(tys.len(), Substitution::from_iter(Interner, tys)).intern(Interner)
@@ -979,7 +979,7 @@ impl<'a> InferenceContext<'a> {
             }
             Array::ElementList { elements, .. } => {
                 let mut coerce = CoerceMany::new(elem_ty);
-                for &expr in elements.iter() {
+                for expr in elements.iter() {
                     let cur_elem_ty = self.infer_expr_inner(expr, &expected);
                     coerce.coerce(self, Some(expr), &cur_elem_ty, CoercionCause::Expr(expr));
                 }
@@ -1092,8 +1092,8 @@ impl<'a> InferenceContext<'a> {
             Expr::Tuple { exprs, .. } => {
                 // We don't consider multiple ellipses. This is analogous to
                 // `hir_def::body::lower::ExprCollector::collect_tuple_pat()`.
-                let ellipsis = exprs.iter().position(|e| is_rest_expr(*e)).map(|p| p as u32);
-                let exprs: Vec<_> = exprs.iter().filter(|e| !is_rest_expr(**e)).copied().collect();
+                let ellipsis = exprs.iter().position(|e| is_rest_expr(e)).map(|p| p as u32);
+                let exprs: Vec<_> = exprs.iter().filter(|e| !is_rest_expr(*e)).collect();
 
                 self.infer_tuple_pat_like(&rhs_ty, (), ellipsis, &exprs)
             }
@@ -1106,8 +1106,8 @@ impl<'a> InferenceContext<'a> {
 
                 // We don't consider multiple ellipses. This is analogous to
                 // `hir_def::body::lower::ExprCollector::collect_tuple_pat()`.
-                let ellipsis = args.iter().position(|e| is_rest_expr(*e)).map(|p| p as u32);
-                let args: Vec<_> = args.iter().filter(|e| !is_rest_expr(**e)).copied().collect();
+                let ellipsis = args.iter().position(|e| is_rest_expr(e)).map(|p| p as u32);
+                let args: Vec<_> = args.iter().filter(|e| !is_rest_expr(*e)).collect();
 
                 self.infer_tuple_struct_pat_like(path, &rhs_ty, (), lhs, ellipsis, &args)
             }
@@ -1118,10 +1118,10 @@ impl<'a> InferenceContext<'a> {
                 };
 
                 // There's no need to handle `..` as it cannot be bound.
-                let sub_exprs = elements.iter().filter(|e| !is_rest_expr(**e));
+                let sub_exprs = elements.iter().filter(|e| !is_rest_expr(*e));
 
                 for e in sub_exprs {
-                    self.infer_assignee_expr(*e, &elem_ty);
+                    self.infer_assignee_expr(e, &elem_ty);
                 }
 
                 match rhs_ty.kind(Interner) {
@@ -1497,7 +1497,7 @@ impl<'a> InferenceContext<'a> {
         &mut self,
         tgt_expr: ExprId,
         receiver: ExprId,
-        args: &[ExprId],
+        args: ExprRange,
         method_name: &Name,
         generic_args: Option<&GenericArgs>,
         expected: &Expectation,
@@ -1610,7 +1610,7 @@ impl<'a> InferenceContext<'a> {
     fn check_call_arguments(
         &mut self,
         expr: ExprId,
-        args: &[ExprId],
+        args: ExprRange,
         expected_inputs: &[Ty],
         param_tys: &[Ty],
         skip_indices: &[u32],
@@ -1636,7 +1636,7 @@ impl<'a> InferenceContext<'a> {
                 .iter()
                 .cloned()
                 .chain(param_iter.clone().skip(expected_inputs.len()));
-            for (idx, ((&arg, param_ty), expected_ty)) in
+            for (idx, ((arg, param_ty), expected_ty)) in
                 args.iter().zip(param_iter).zip(expected_iter).enumerate()
             {
                 let is_closure = matches!(&self.body[arg], Expr::Closure { .. });
@@ -1788,7 +1788,7 @@ impl<'a> InferenceContext<'a> {
     }
 
     /// Returns the argument indices to skip.
-    fn check_legacy_const_generics(&mut self, callee: Ty, args: &[ExprId]) -> Box<[u32]> {
+    fn check_legacy_const_generics(&mut self, callee: Ty, args: ExprRange) -> Box<[u32]> {
         let (func, subst) = match callee.kind(Interner) {
             TyKind::FnDef(fn_id, subst) => {
                 let callable = CallableDefId::from_chalk(self.db, *fn_id);
@@ -1830,7 +1830,7 @@ impl<'a> InferenceContext<'a> {
             }
             let _ty = arg.data(Interner).ty.clone();
             let expected = Expectation::none(); // FIXME use actual const ty, when that is lowered correctly
-            self.infer_expr(args[arg_idx as usize], &expected);
+            self.infer_expr(args.iter().nth(arg_idx as usize).unwrap(), &expected);
             // FIXME: evaluate and unify with the const
         }
         let mut indices = data.legacy_const_generics_indices.clone();

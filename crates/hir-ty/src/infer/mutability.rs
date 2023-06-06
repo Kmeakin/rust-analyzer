@@ -75,7 +75,7 @@ impl<'a> InferenceContext<'a> {
             }
             Expr::MethodCall { receiver: x, method_name: _, args, generic_args: _ }
             | Expr::Call { callee: x, args, is_assignee_expr: _ } => {
-                self.infer_mut_not_expr_iter(args.iter().copied().chain(Some(*x)));
+                self.infer_mut_not_expr_iter(args.iter().chain(Some(*x)));
             }
             Expr::Match { expr, arms } => {
                 let m = self.pat_iter_bound_mutability(arms.iter().map(|x| x.pat));
@@ -178,7 +178,7 @@ impl<'a> InferenceContext<'a> {
             }
             Expr::Tuple { exprs, is_assignee_expr: _ }
             | Expr::Array(Array::ElementList { elements: exprs, is_assignee_expr: _ }) => {
-                self.infer_mut_not_expr_iter(exprs.iter().copied());
+                self.infer_mut_not_expr_iter(exprs.iter());
             }
             // These don't need any action, as they don't have sub expressions
             Expr::Range { lhs: None, rhs: None, range_type: _ }

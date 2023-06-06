@@ -593,7 +593,7 @@ impl<'ctx> MirLowerCtx<'ctx> {
                     let func = Operand::from_bytes(vec![], ty);
                     return self.lower_call_and_args(
                         func,
-                        iter::once(*callee).chain(args.iter().copied()),
+                        iter::once(*callee).chain(args.iter()),
                         place,
                         current,
                         self.is_uninhabited(expr_id),
@@ -604,13 +604,13 @@ impl<'ctx> MirLowerCtx<'ctx> {
                 match &callee_ty.data(Interner).kind {
                     chalk_ir::TyKind::FnDef(..) => {
                         let func = Operand::from_bytes(vec![], callee_ty.clone());
-                        self.lower_call_and_args(func, args.iter().copied(), place, current, self.is_uninhabited(expr_id), expr_id.into())
+                        self.lower_call_and_args(func, args.iter(), place, current, self.is_uninhabited(expr_id), expr_id.into())
                     }
                     chalk_ir::TyKind::Function(_) => {
                         let Some((func, current)) = self.lower_expr_to_some_operand(*callee, current)? else {
                             return Ok(None);
                         };
-                        self.lower_call_and_args(func, args.iter().copied(), place, current, self.is_uninhabited(expr_id), expr_id.into())
+                        self.lower_call_and_args(func, args.iter(), place, current, self.is_uninhabited(expr_id), expr_id.into())
                     }
                     TyKind::Error => return Err(MirLowerError::MissingFunctionDefinition(self.owner, expr_id)),
                     _ => return Err(MirLowerError::TypeError("function call on bad type")),
@@ -622,7 +622,7 @@ impl<'ctx> MirLowerCtx<'ctx> {
                 let func = Operand::from_fn(self.db, func_id, generic_args);
                 self.lower_call_and_args(
                     func,
-                    iter::once(*receiver).chain(args.iter().copied()),
+                    iter::once(*receiver).chain(args.iter()),
                     place,
                     current,
                     self.is_uninhabited(expr_id),
@@ -1060,7 +1060,7 @@ impl<'ctx> MirLowerCtx<'ctx> {
                 let Some(values) = exprs
                         .iter()
                         .map(|x| {
-                            let Some((o, c)) = self.lower_expr_to_some_operand(*x, current)? else {
+                            let Some((o, c)) = self.lower_expr_to_some_operand(x, current)? else {
                                 return Ok(None);
                             };
                             current = c;
@@ -1090,7 +1090,7 @@ impl<'ctx> MirLowerCtx<'ctx> {
                     let Some(values) = elements
                             .iter()
                             .map(|x| {
-                                let Some((o, c)) = self.lower_expr_to_some_operand(*x, current)? else {
+                                let Some((o, c)) = self.lower_expr_to_some_operand(x, current)? else {
                                     return Ok(None);
                                 };
                                 current = c;
