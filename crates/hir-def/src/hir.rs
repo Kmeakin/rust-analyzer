@@ -561,3 +561,29 @@ impl Pat {
         }
     }
 }
+
+#[cfg(test)]
+#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
+mod size_tests {
+    use super::*;
+
+    #[test]
+    fn expr_size() {
+        assert_eq!(std::mem::size_of::<Expr>(), 56);
+    }
+
+    #[test]
+    fn pat_size() {
+        assert_eq!(std::mem::size_of::<Pat>(), 48);
+    }
+
+    #[test]
+    fn literal_size() {
+        assert_eq!(std::mem::size_of::<Literal>(), 24);
+    }
+
+    #[test]
+    fn statement_size() {
+        assert_eq!(std::mem::size_of::<Statement>(), 32);
+    }
+}
